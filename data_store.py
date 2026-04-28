@@ -5,9 +5,6 @@ import threading
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional
 
-import config as cfg
-
-
 @dataclass
 class RepeaterState:
     name: str = ""
@@ -63,10 +60,11 @@ class SQLiteLogHandler(logging.Handler):
 
 
 class DataStore:
-    def __init__(self):
+    def __init__(self, cfg):
+        self.cfg = cfg
         self._lock = threading.Lock()
         self._repeaters: Dict[str, RepeaterState] = {}
-        self._db_path = cfg.HISTORY_DB if cfg.ENABLE_HISTORY else None
+        self._db_path = cfg.history_db if cfg.enable_history else None
         if self._db_path:
             self._init_db()
 
@@ -172,16 +170,16 @@ class DataStore:
         with self._lock:
             self._repeaters.pop(pubkey, None)
 
-    def sync_repeaters(self, configured: list):
+    def sync_repeaters(self):
         """Sync store with configured repeater list. Add new, remove stale."""
-        configured_keys = {r["pubkey"] for r in configured}
+        configured_keys = {r["pubkey"] for r in self.cfg.repeaters}
         with self._lock:
             # Remove repeaters no longer in config
             for pk in list(self._repeaters.keys()):
                 if pk not in configured_keys:
                     del self._repeaters[pk]
         # Add/update configured ones
-        for r in configured:
+        for r in self.cfg.repeaters:
             self.init_repeater(r["pubkey"], r["name"])
 
     def reorder(self, pubkeys: list):

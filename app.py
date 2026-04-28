@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-import config as cfg
+from config import Config
 from data_store import DataStore
 from meshcore_poller import MeshcorePoller
 
@@ -25,8 +25,10 @@ logger = logging.getLogger("app")
 
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
-store = DataStore()
-poller = MeshcorePoller(store)
+
+cfg = Config()
+store = DataStore(cfg)
+poller = MeshcorePoller(store, cfg)
 
 # Attach SQLite log handler to capture poller activity
 _log_handler = store.get_log_handler()
@@ -41,7 +43,7 @@ async def lifespan(app: FastAPI):
     async def prune_logs_periodically():
         while True:
             await asyncio.sleep(3600)
-            retention = cfg.get_log_retention_hours()
+            retention = cfg.log_retention_hours
             store.prune_activity_logs(retention)
 
     prune_task = asyncio.create_task(prune_logs_periodically())
@@ -151,9 +153,8 @@ async def get_map_data():
         home["lon"] = si.get("adv_lon", 0.0) or 0.0
     # Fall back to manually saved home location if device has no GPS
     if not home["lat"] and not home["lon"]:
-        s = cfg.get_settings()
-        home["lat"] = s.get("home_lat", 0.0) or 0.0
-        home["lon"] = s.get("home_lon", 0.0) or 0.0
+        home["lat"] = cfg.home_lat or 0.0
+        home["lon"] = cfg.home_lon or 0.0
 
     # Include all mesh contacts for neighbour discovery on the map
     mesh_contacts = []
@@ -187,10 +188,8 @@ async def set_home_location(request: Request):
         lon = float(body.get("lon", 0.0))
     except (TypeError, ValueError):
         return {"ok": False, "error": "lat and lon must be numbers"}
-    s = cfg.get_settings()
-    s["home_lat"] = lat
-    s["home_lon"] = lon
-    cfg.save_settings(s)
+    
+    cfg.save()
     logger.info(f"Home location set to {lat:.6f}, {lon:.6f}")
     return {"ok": True}
 
@@ -225,7 +224,7 @@ async def get_device_channels():
     device_chs = poller.device_channels
     if device_chs:
         return device_chs
-    return cfg.get_channels()
+    return cfg.channels
 
 
 @app.get("/api/connection")
@@ -233,8 +232,8 @@ async def get_connection():
     """Return current connection status."""
     result = {
         "connected": poller.is_connected,
-        "host": cfg.get_companion_host(),
-        "port": cfg.get_companion_port(),
+        "host": cfg.companion_host,
+        "port": cfg.companion_port,
     }
     # Companion device battery — prefer telemetry (analog ch 1), fall back to self_info
     bat = poller._companion_battery_mv or 0
@@ -315,7 +314,7 @@ async def send_message(request: Request):
 @app.get("/api/settings")
 async def get_settings():
     """Return current settings for the settings page."""
-    return cfg.get_settings()
+    return cfg.as_dict()
 
 
 @app.post("/api/settings")
@@ -327,9 +326,6 @@ async def save_settings(request: Request):
     if "companion_host" not in body or not body["companion_host"]:
         return {"ok": False, "error": "Companion host IP is required"}
 
-    if "companion_port" not in body:
-        body["companion_port"] = 5000
-
     # Ensure port is an integer
     try:
         body["companion_port"] = int(body["companion_port"])
@@ -337,52 +333,52 @@ async def save_settings(request: Request):
         return {"ok": False, "error": "Port must be a number"}
 
     # Validate repeaters list
-    repeaters = body.get("repeaters", [])
-    for r in repeaters:
+    for r in body.get("repeaters", []):
         if not r.get("name") or not r.get("pubkey"):
             return {"ok": False, "error": "Each repeater needs a name and public key"}
 
     # Ensure timing values are integers with sensible minimums
-    body.setdefault("poll_interval_seconds", 120)
-    body.setdefault("stagger_delay_seconds", 15)
-    body.setdefault("stale_threshold_seconds", 900)
     try:
-        body["poll_interval_seconds"] = max(30, int(body["poll_interval_seconds"]))
-        body["stagger_delay_seconds"] = max(5, int(body["stagger_delay_seconds"]))
-        body["stale_threshold_seconds"] = max(60, int(body["stale_threshold_seconds"]))
+        if "poll_interval_seconds" in body:
+            body["poll_interval_seconds"] = max(30, int(body["poll_interval_seconds"]))
+        if "stagger_delay_seconds" in body:
+            body["stagger_delay_seconds"] = max(5, int(body["stagger_delay_seconds"]))
+        if "stale_threshold_seconds" in body:
+            body["stale_threshold_seconds"] = max(60, int(body["stale_threshold_seconds"]))
     except (ValueError, TypeError):
         return {"ok": False, "error": "Timing values must be numbers"}
 
     # Log retention
-    body.setdefault("log_retention_hours", 24)
     try:
-        body["log_retention_hours"] = max(1, int(body["log_retention_hours"]))
+        if "log_retention_hours" in body:
+            body["log_retention_hours"] = max(1, int(body["log_retention_hours"]))
     except (ValueError, TypeError):
-        body["log_retention_hours"] = 24
+        return {"ok": False, "error": "log_retention_hours is invalid"}
 
     # Map settings
-    body.setdefault("map_path_max_km", 300)
-    body.setdefault("node_id_chars", 2)
     try:
-        body["map_path_max_km"] = max(10, int(body["map_path_max_km"]))
-        body["node_id_chars"] = max(2, min(6, int(body["node_id_chars"])))
+        if "map_path_max_km" in body:
+            body["map_path_max_km"] = max(10, int(body["map_path_max_km"]))
     except (ValueError, TypeError):
-        body["map_path_max_km"] = 300
-        body["node_id_chars"] = 2
-
-    # Preserve fields managed by other endpoints (e.g. ntfy toggle) that aren't in this payload
-    existing = cfg.get_settings()
-    for key in ("ntfy_enabled",):
-        if key not in body:
-            body[key] = existing.get(key, True)
+        return {"ok": False, "error": "map_path_max_km is invalid"}
+    
+    try:
+        if "node_id_chars" in body:
+            body["node_id_chars"] = max(2, min(6, int(body["node_id_chars"])))
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "node_id_chars is invalid"}
+    
+    for key, value in body.items():
+        if hasattr(cfg, key):
+            setattr(cfg, key, value)
 
     # Save to settings.json
-    cfg.save_settings(body)
-    logger.info(f"Settings saved: {body['companion_host']}:{body['companion_port']}, "
-                f"{len(repeaters)} repeaters")
+    cfg.save()
+    logger.info(f"Settings saved: {cfg.companion_host}:{cfg.companion_port}, "
+                f"{len(cfg.repeaters)} repeaters")
 
     # Sync the data store with the new repeater list
-    store.sync_repeaters(repeaters)
+    store.sync_repeaters()
 
     # Tell the poller to reconnect with new settings
     poller.request_reconnect()
@@ -400,14 +396,14 @@ async def reorder_repeaters(request: Request):
     if not pubkeys:
         return {"ok": False, "error": "No pubkeys provided"}
 
-    settings = cfg.get_settings()
-    existing = {r["pubkey"]: r for r in settings.get("repeaters", [])}
-    settings["repeaters"] = [existing[pk] for pk in pubkeys if pk in existing]
+    existing = {r["pubkey"]: r for r in cfg.repeaters}
+    new_list = [existing[pk] for pk in pubkeys if pk in existing]
     # Preserve any not in the list (shouldn't happen, but be safe)
     for pk, r in existing.items():
         if pk not in pubkeys:
-            settings["repeaters"].append(r)
-    cfg.save_settings(settings)
+            new_list.append(r)
+    cfg.repeaters = new_list
+    cfg.save()
     store.reorder(pubkeys)
     return {"ok": True}
 
@@ -444,11 +440,10 @@ async def test_ntfy(request: Request):
 @app.post("/api/ntfy/toggle")
 async def toggle_ntfy():
     """Toggle push notifications on/off without changing topic/server settings."""
-    s = cfg.get_settings()
-    s["ntfy_enabled"] = not s.get("ntfy_enabled", True)
-    cfg.save_settings(s)
-    logger.info(f"Push notifications {'enabled' if s['ntfy_enabled'] else 'disabled'}")
-    return {"ok": True, "enabled": s["ntfy_enabled"]}
+    cfg.ntfy_enabled = not cfg.ntfy_enabled
+    cfg.save()
+    logger.info(f"Push notifications {'enabled' if cfg.ntfy_enabled else 'disabled'}")
+    return {"ok": True, "enabled": cfg.ntfy_enabled}
 
 
 # --- Update API ---

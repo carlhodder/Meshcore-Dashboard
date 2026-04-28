@@ -7,7 +7,7 @@ from collections import deque
 
 from meshcore import MeshCore, EventType
 
-import config as cfg
+from config import Config
 from data_store import DataStore
 
 logger = logging.getLogger("meshcore_poller")
@@ -22,8 +22,9 @@ class MeshcorePoller:
     (companion IP, repeater list, timing) take effect without restart.
     """
 
-    def __init__(self, store: DataStore):
+    def __init__(self, store: DataStore, cfg: Config):
         self.store = store
+        self._cfg = cfg
         self.mc: MeshCore = None
         self._running = False
         self._contacts = {}
@@ -86,7 +87,7 @@ class MeshcorePoller:
         self._running = True
 
         # Register any initially configured repeaters
-        for r in cfg.get_repeaters():
+        for r in self._cfg.repeaters:
             self.store.init_repeater(r["pubkey"], r["name"])
 
         while self._running:
@@ -141,19 +142,27 @@ class MeshcorePoller:
         return self._polling_enabled
 
     async def _connect_and_poll(self):
-        host = cfg.get_companion_host()
-        port = cfg.get_companion_port()
+        host = self._cfg.companion_host
+        port = self._cfg.companion_host
         self._current_host = host
         self._current_port = port
         self._needs_reconnect = False
 
-        logger.info(f"Connecting to companion at {host}:{port}")
-        self.mc = await MeshCore.create_tcp(
-            host,
-            port,
-            auto_reconnect=True,
-            max_reconnect_attempts=5,
-        )
+        if not host:
+            return
+
+        print(f"Companion type: {self._cfg.companion_type}")
+        if self._cfg.companion_type == Config.CompanionType.SERIAL_USB:
+            logger.info(f"Connecting to companion at {host}")
+            self.mc = await MeshCore.create_serial(host)
+        else:
+            logger.info(f"Connecting to companion at {host}:{port}")
+            self.mc = await MeshCore.create_tcp(
+                host,
+                port,
+                auto_reconnect=True,
+                max_reconnect_attempts=5,
+            )
         logger.info("Connected to companion device")
         if self.mc and hasattr(self.mc, "self_info") and self.mc.self_info:
             logger.info(f"Self info: {self.mc.self_info}")
@@ -167,16 +176,16 @@ class MeshcorePoller:
 
         while self._running and not self._needs_reconnect and not self._stay_disconnected:
             # Re-read config each cycle for dynamic updates
-            repeaters = cfg.get_repeaters()
-            poll_interval = cfg.get_poll_interval()
+            repeaters = self._cfg.repeaters
+            poll_interval = self._cfg.poll_interval_seconds
 
             # Sync the store with current repeater list
             for r in repeaters:
                 self.store.init_repeater(r["pubkey"], r["name"])
 
             # Check if companion IP changed
-            new_host = cfg.get_companion_host()
-            new_port = cfg.get_companion_port()
+            new_host = self._cfg.companion_host
+            new_port = self._cfg.companion_port
             if new_host != self._current_host or new_port != self._current_port:
                 logger.info(f"Companion address changed to {new_host}:{new_port}, reconnecting...")
                 break
@@ -520,14 +529,14 @@ class MeshcorePoller:
 
     async def _send_ntfy(self, title: str, message: str):
         """Fire a push notification via ntfy if a topic is configured and notifications are enabled."""
-        s = cfg.get_settings()
-        if not s.get("ntfy_enabled", True):
+        s = self._cfg
+        if not self._cfg.ntfy_enabled:
             return
-        topic = s.get("ntfy_topic", "").strip()
+        topic = s.ntfy_topic.strip()
         if not topic:
             return
-        server = s.get("ntfy_server", "https://ntfy.sh").strip().rstrip("/")
-        click_url = s.get("dashboard_url", "").strip()
+        server = s.ntfy_server.strip().rstrip("/")
+        click_url = s.dashboard_url.strip()
         await self._send_ntfy_to(server, topic, title, message, click_url)
 
     async def _send_ntfy_to(self, server: str, topic: str, title: str, message: str, click_url: str = ""):
@@ -608,7 +617,7 @@ class MeshcorePoller:
             # Update configured repeater store if this matches one
             matched_pubkey = None
             matched_name = None
-            for r in cfg.get_repeaters():
+            for r in self._cfg.repeaters:
                 pk = r["pubkey"]
                 if pk.startswith(pubkey_pre) or pubkey_pre.startswith(pk):
                     matched_pubkey = pk
@@ -1041,7 +1050,7 @@ class MeshcorePoller:
     async def _poll_all_repeaters(self, repeaters: list):
         """Poll each configured repeater with staggered delays."""
         await self._refresh_contacts()
-        stagger = cfg.get_stagger_delay()
+        stagger = self._cfg.stagger_delay_seconds
 
         for i, repeater_cfg in enumerate(repeaters):
             if not self._running or self._needs_reconnect or self._stay_disconnected:
@@ -1320,7 +1329,7 @@ class MeshcorePoller:
         # Find name and admin password from config
         name = pubkey[:8]
         admin_pass = "password"
-        for r in cfg.get_repeaters():
+        for r in self._cfg.repeaters:
             pk = r["pubkey"]
             if pk == pubkey or pk.startswith(pubkey) or pubkey.startswith(pk):
                 admin_pass = r.get("admin_pass", "password")
@@ -1355,7 +1364,7 @@ class MeshcorePoller:
 
         name = pubkey[:8]
         admin_pass = "password"
-        for r in cfg.get_repeaters():
+        for r in self._cfg.repeaters:
             pk = r["pubkey"]
             if pk == pubkey or pk.startswith(pubkey) or pubkey.startswith(pk):
                 admin_pass = r.get("admin_pass", "password")

@@ -50,6 +50,10 @@
       color: #94a3b8;
     }
     .conn-status-text strong { color: #e2e8f0; }
+
+    .hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -76,6 +80,16 @@
     <!-- Companion Device -->
     <div class="settings-section">
       <h3>Companion Device</h3>
+      <div class="settings-row">
+        <div class="settings-label">Companion Type</div>
+        <fieldset>
+          <input type="radio" id="companionTypeSerial" name="companionType" value="1" onchange="toggleType(this)">
+          <label for="companionTypeSerial">Serial/USB</label>
+          
+          <input type="radio" id="companionTypeTCP" name="companionType" value="2" onchange="toggleType(this)">
+          <label for="companionTypeTCP">TCP</label>
+        </fieldset>
+      </div>
       <div class="settings-row">
         <div class="settings-field">
           <label for="companionHost">IP Address</label>
@@ -357,6 +371,7 @@
     // --- Save ---
 
     function saveSettings() {
+      var type = document.querySelector('input[name="companionType"]:checked')?.value || "2";
       var host = document.getElementById('companionHost').value.trim();
       var port = document.getElementById('companionPort').value.trim();
       var pollInterval = document.getElementById('pollInterval').value.trim();
@@ -402,6 +417,7 @@
       var dashboardUrl = document.getElementById('dashboardUrl').value.trim();
 
       var payload = {
+        companion_type: type,
         companion_host: host,
         companion_port: parseInt(port) || 5000,
         repeaters: repeaters,
@@ -500,6 +516,22 @@
       setTimeout(poll, 2000);
     }
 
+    // --- Type toggle ---
+    function toggleType(radio) {
+      var host_el = document.getElementById('companionHost');
+      var port_el = document.getElementById('companionPort');
+      var port_label = document.querySelector(`label[for="${port_el.id}"]`);
+      if (radio.value == "2") {
+        host_el.placeholder = "192.168.0.100";
+        port_el.classList.remove("hidden");
+        port_label.classList.remove("hidden");
+      } else if (radio.value == "1") {
+        host_el.placeholder = "/dev/ttyACMX or COMX";
+        port_el.classList.add("hidden");
+        port_label.classList.add("hidden");
+      }
+    }
+
     // --- Load on page open ---
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -508,6 +540,7 @@
       fetch('/api/settings')
         .then(function(r) { return r.json(); })
         .then(function(s) {
+          document.querySelector(`input[name="companionType"][value="${s.companion_type || 2}"]`).checked = true;
           document.getElementById('companionHost').value = s.companion_host || '';
           document.getElementById('companionPort').value = s.companion_port || 5000;
           document.getElementById('pollInterval').value = s.poll_interval_seconds || 3600;
@@ -518,6 +551,9 @@
           document.getElementById('ntfyTopic').value = s.ntfy_topic || '';
           document.getElementById('ntfyServer').value = s.ntfy_server || 'https://ntfy.sh';
           document.getElementById('dashboardUrl').value = s.dashboard_url || '';
+
+          // Set placeholder text for host given type
+          toggleType({value: s.companion_type});
 
           // Channels
           var chList = document.getElementById('channelList');
