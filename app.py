@@ -27,6 +27,7 @@ BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 cfg = Config()
+cfg._load()
 store = DataStore(cfg)
 poller = MeshcorePoller(store, cfg)
 
@@ -70,6 +71,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 # --- Dashboard ---
 
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     html_path = BASE_DIR / "templates" / "dashboard.html"
@@ -103,6 +105,7 @@ async def packets_page(request: Request):
 
 # --- Repeater Data API ---
 
+
 @app.get("/api/repeaters")
 async def get_repeaters():
     return store.get_all()
@@ -133,12 +136,14 @@ async def get_message_paths():
             key = (m["sender_pubkey"][:4].lower(), m["path"])
             if key not in seen:
                 seen.add(key)
-                result.append({
-                    "sender_pubkey": m["sender_pubkey"],
-                    "sender_name": m["sender_name"],
-                    "path": m["path"],
-                    "hops": m["hops"],
-                })
+                result.append(
+                    {
+                        "sender_pubkey": m["sender_pubkey"],
+                        "sender_name": m["sender_name"],
+                        "path": m["path"],
+                        "hops": m["hops"],
+                    }
+                )
     return result
 
 
@@ -172,11 +177,18 @@ async def get_map_data():
     # Tag each as configured if pubkey matches a dashboard repeater
     for n in advert_nodes:
         n["configured"] = any(
-            n["pubkey"] == pk or n["pubkey"].startswith(pk) or pk.startswith(n["pubkey"])
+            n["pubkey"] == pk
+            or n["pubkey"].startswith(pk)
+            or pk.startswith(n["pubkey"])
             for pk in configured_pubkeys
         )
 
-    return {"home": home, "repeaters": repeaters, "contacts": mesh_contacts, "advert_nodes": advert_nodes}
+    return {
+        "home": home,
+        "repeaters": repeaters,
+        "contacts": mesh_contacts,
+        "advert_nodes": advert_nodes,
+    }
 
 
 @app.post("/api/home")
@@ -188,7 +200,7 @@ async def set_home_location(request: Request):
         lon = float(body.get("lon", 0.0))
     except (TypeError, ValueError):
         return {"ok": False, "error": "lat and lon must be numbers"}
-    
+
     cfg.save()
     logger.info(f"Home location set to {lat:.6f}, {lon:.6f}")
     return {"ok": True}
@@ -200,7 +212,9 @@ async def get_history(pubkey: str, hours: int = 24):
 
 
 @app.get("/api/logs")
-async def get_logs(hours: int = 24, level: str = None, search: str = None, limit: int = 500):
+async def get_logs(
+    hours: int = 24, level: str = None, search: str = None, limit: int = 500
+):
     """Return recent activity logs, optionally filtered by level and/or message text."""
     return store.get_activity_logs(hours=hours, level=level, search=search, limit=limit)
 
@@ -217,6 +231,7 @@ async def event_stream():
 
 
 # --- Connection API ---
+
 
 @app.get("/api/channels")
 async def get_device_channels():
@@ -237,9 +252,20 @@ async def get_connection():
     }
     # Companion device battery — prefer telemetry (analog ch 1), fall back to self_info
     bat = poller._companion_battery_mv or 0
-    if not bat and poller.mc and hasattr(poller.mc, "self_info") and poller.mc.self_info:
+    if (
+        not bat
+        and poller.mc
+        and hasattr(poller.mc, "self_info")
+        and poller.mc.self_info
+    ):
         si = poller.mc.self_info
-        bat = si.get("bat", 0) or si.get("bat_mv", 0) or si.get("battery", 0) or si.get("battery_mv", 0) or 0
+        bat = (
+            si.get("bat", 0)
+            or si.get("bat_mv", 0)
+            or si.get("battery", 0)
+            or si.get("battery_mv", 0)
+            or 0
+        )
     if bat > 0:
         result["battery_mv"] = bat
     result["polling_enabled"] = poller._polling_enabled
@@ -271,6 +297,7 @@ async def connect_companion():
 
 
 # --- Messages API ---
+
 
 @app.get("/api/packets")
 async def get_packets(limit: int = 100):
@@ -311,6 +338,7 @@ async def send_message(request: Request):
 
 # --- Settings API ---
 
+
 @app.get("/api/settings")
 async def get_settings():
     """Return current settings for the settings page."""
@@ -344,7 +372,9 @@ async def save_settings(request: Request):
         if "stagger_delay_seconds" in body:
             body["stagger_delay_seconds"] = max(5, int(body["stagger_delay_seconds"]))
         if "stale_threshold_seconds" in body:
-            body["stale_threshold_seconds"] = max(60, int(body["stale_threshold_seconds"]))
+            body["stale_threshold_seconds"] = max(
+                60, int(body["stale_threshold_seconds"])
+            )
     except (ValueError, TypeError):
         return {"ok": False, "error": "Timing values must be numbers"}
 
@@ -361,21 +391,23 @@ async def save_settings(request: Request):
             body["map_path_max_km"] = max(10, int(body["map_path_max_km"]))
     except (ValueError, TypeError):
         return {"ok": False, "error": "map_path_max_km is invalid"}
-    
+
     try:
         if "node_id_chars" in body:
             body["node_id_chars"] = max(2, min(6, int(body["node_id_chars"])))
     except (ValueError, TypeError):
         return {"ok": False, "error": "node_id_chars is invalid"}
-    
+
     for key, value in body.items():
         if hasattr(cfg, key):
             setattr(cfg, key, value)
 
     # Save to settings.json
     cfg.save()
-    logger.info(f"Settings saved: {cfg.companion_host}:{cfg.companion_port}, "
-                f"{len(cfg.repeaters)} repeaters")
+    logger.info(
+        f"Settings saved: {cfg.companion_host}:{cfg.companion_port}, "
+        f"{len(cfg.repeaters)} repeaters"
+    )
 
     # Sync the data store with the new repeater list
     store.sync_repeaters()
@@ -387,6 +419,7 @@ async def save_settings(request: Request):
 
 
 # --- Reorder & Ping APIs ---
+
 
 @app.post("/api/reorder")
 async def reorder_repeaters(request: Request):
@@ -431,8 +464,7 @@ async def test_ntfy(request: Request):
         return {"ok": False, "error": "No topic provided"}
     if poller:
         await poller._send_ntfy_to(
-            server, topic,
-            "MeshCore Test", "Push notifications are working!", click_url
+            server, topic, "MeshCore Test", "Push notifications are working!", click_url
         )
     return {"ok": True}
 
@@ -450,7 +482,11 @@ async def toggle_ntfy():
 
 # Allowed file paths inside the zip (only update dashboard source files)
 _ALLOWED_UPDATE_PATHS = {
-    "app.py", "config.py", "data_store.py", "meshcore_poller.py", "requirements.txt",
+    "app.py",
+    "config.py",
+    "data_store.py",
+    "meshcore_poller.py",
+    "requirements.txt",
     "docker-compose.yml",
 }
 _ALLOWED_UPDATE_PREFIXES = ("templates/", "static/")
@@ -481,20 +517,32 @@ async def apply_update(file: UploadFile = File(...)):
     try:
         with zipfile.ZipFile(tmp_path) as zf:
             names = zf.namelist()
+
             # Strip leading top-level directory if zip was created with one
             # e.g. "meshcore-dashboard/app.py" -> "app.py"
             # But do NOT strip known source dirs like "templates/" or "static/"
             def _normalise(name: str) -> str:
                 parts = name.split("/", 1)
-                if (len(parts) == 2 and "." not in parts[0]
-                        and parts[0] not in _KNOWN_TOP_DIRS and parts[1]):
+                if (
+                    len(parts) == 2
+                    and "." not in parts[0]
+                    and parts[0] not in _KNOWN_TOP_DIRS
+                    and parts[1]
+                ):
                     return parts[1]
                 return name
 
             normalised = [_normalise(n) for n in names]
-            bad = [n for n in normalised if n and not n.endswith("/") and not _is_allowed_path(n)]
+            bad = [
+                n
+                for n in normalised
+                if n and not n.endswith("/") and not _is_allowed_path(n)
+            ]
             if bad:
-                return {"ok": False, "error": f"Zip contains unexpected paths: {bad[:5]}"}
+                return {
+                    "ok": False,
+                    "error": f"Zip contains unexpected paths: {bad[:5]}",
+                }
 
             for zip_name, norm_name in zip(names, normalised):
                 if not norm_name or norm_name.endswith("/"):
@@ -503,8 +551,13 @@ async def apply_update(file: UploadFile = File(...)):
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(zf.read(zip_name))
 
-        logger.info(f"Update applied: {len([n for n in normalised if n and not n.endswith('/')])} files")
-        return {"ok": True, "files": [n for n in normalised if n and not n.endswith("/")]}
+        logger.info(
+            f"Update applied: {len([n for n in normalised if n and not n.endswith('/')])} files"
+        )
+        return {
+            "ok": True,
+            "files": [n for n in normalised if n and not n.endswith("/")],
+        }
     except zipfile.BadZipFile:
         return {"ok": False, "error": "Invalid zip file"}
     finally:
