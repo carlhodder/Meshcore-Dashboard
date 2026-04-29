@@ -371,14 +371,14 @@
     // --- Save ---
 
     function saveSettings() {
-      var type = document.querySelector('input[name="companionType"]:checked')?.value || "2";
+      var type = document.querySelector('input[name="companionType"]:checked')?.value;
       var host = document.getElementById('companionHost').value.trim();
       var port = document.getElementById('companionPort').value.trim();
       var pollInterval = document.getElementById('pollInterval').value.trim();
       var staggerDelay = document.getElementById('staggerDelay').value.trim();
       var lowBatPct = document.getElementById('lowBatteryPct').value.trim();
       var mapPathMaxKm = document.getElementById('mapPathMaxKm').value.trim();
-      var nodeIdChars = parseInt(document.getElementById('nodeIdChars').value) || 2;
+      var nodeIdChars = document.getElementById('nodeIdChars').value.trim();
 
       if (!host) { showStatus('Companion IP is required', true); return; }
 
@@ -419,20 +419,19 @@
       var payload = {
         companion_type: type,
         companion_host: host,
-        companion_port: parseInt(port) || 5000,
+        companion_port: port,
         repeaters: repeaters,
         channels: channels,
-        poll_interval_seconds: parseInt(pollInterval) || 3600,
-        stagger_delay_seconds: parseInt(staggerDelay) || 30,
-        stale_threshold_seconds: 900,
-        low_battery_percent: parseInt(lowBatPct) || 20,
-        map_path_max_km: parseInt(mapPathMaxKm) || 300,
+        poll_interval_seconds: pollInterval,
+        stagger_delay_seconds: staggerDelay,
+        low_battery_percent: lowBatPct,
+        map_path_max_km: mapPathMaxKm,
         node_id_chars: nodeIdChars,
         ntfy_topic: ntfyTopic,
-        ntfy_server: ntfyServer || "https://ntfy.sh",
+        ntfy_server: ntfyServer,
         dashboard_url: dashboardUrl
       };
-
+      
       fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -516,7 +515,7 @@
       setTimeout(poll, 2000);
     }
 
-    // --- Type toggle ---
+    // --- Companion type toggle ---
     function toggleType(radio) {
       var host_el = document.getElementById('companionHost');
       var port_el = document.getElementById('companionPort');
@@ -540,17 +539,17 @@
       fetch('/api/settings')
         .then(function(r) { return r.json(); })
         .then(function(s) {
-          document.querySelector(`input[name="companionType"][value="${s.companion_type || 2}"]`).checked = true;
-          document.getElementById('companionHost').value = s.companion_host || '';
-          document.getElementById('companionPort').value = s.companion_port || 5000;
-          document.getElementById('pollInterval').value = s.poll_interval_seconds || 3600;
-          document.getElementById('staggerDelay').value = s.stagger_delay_seconds || 30;
-          document.getElementById('lowBatteryPct').value = s.low_battery_percent || 20;
-          document.getElementById('mapPathMaxKm').value = s.map_path_max_km || 300;
-          document.getElementById('nodeIdChars').value = s.node_id_chars || 2;
-          document.getElementById('ntfyTopic').value = s.ntfy_topic || '';
-          document.getElementById('ntfyServer').value = s.ntfy_server || 'https://ntfy.sh';
-          document.getElementById('dashboardUrl').value = s.dashboard_url || '';
+          document.querySelector(`input[name="companionType"][value="${s.companion_type}"]`).checked = true;
+          document.getElementById('companionHost').value = s.companion_host;
+          document.getElementById('companionPort').value = s.companion_port;
+          document.getElementById('pollInterval').value = s.poll_interval_seconds;
+          document.getElementById('staggerDelay').value = s.stagger_delay_seconds;
+          document.getElementById('lowBatteryPct').value = s.low_battery_percent;
+          document.getElementById('mapPathMaxKm').value = s.map_path_max_km;
+          document.getElementById('nodeIdChars').value = s.node_id_chars;
+          document.getElementById('ntfyTopic').value = s.ntfy_topic;
+          document.getElementById('ntfyServer').value = s.ntfy_server;
+          document.getElementById('dashboardUrl').value = s.dashboard_url;
 
           // Set placeholder text for host given type
           toggleType({value: s.companion_type});

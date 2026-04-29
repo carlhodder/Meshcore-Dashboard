@@ -158,7 +158,6 @@ class MeshcorePoller:
         if not host:
             return
 
-        print(f"Companion type: {self._cfg.companion_type}")
         try:
             if self._cfg.companion_type == Config.CompanionType.SERIAL_USB:
                 logger.info(f"Connecting to companion at {host}")

@@ -13,6 +13,8 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from pydantic import ValidationError
+
 from config import Config
 from data_store import DataStore
 from meshcore_poller import MeshcorePoller
@@ -355,7 +357,13 @@ async def save_settings(request: Request):
         return {"ok": False, "error": "Companion host IP is required"}
 
     # Save to settings.json
-    cfg.validate_and_save(body)
+    errors = []
+    try:
+        cfg.validate_and_save(body)
+    except ValidationError as e:
+        errors = "; ".join(f"{".".join(err["loc"])}: {err["msg"]}" for err in e.errors())
+        return {"ok": False, "error": errors}
+    
     logger.info(
         f"Settings saved: {cfg.companion_host}:{cfg.companion_port}, "
         f"{len(cfg.repeaters)} repeaters"

@@ -26,7 +26,7 @@ class UserConfigurables(BaseModel):
         TCP = 2
 
     companion_type: int = CompanionType.TCP
-    companion_host: str = "localhost"
+    companion_host: str = "" 
     companion_port: int = 5000
     repeaters: List[Dict[str, Any]] = []
     poll_interval_seconds: int = 3600
@@ -110,7 +110,10 @@ class Config(UserConfigurables):
         # Merge data with defaults so keys always exist w/ valid value.
         try:
             current_data = self.model_dump()
-            self = Config.model_validate({**current_data, **settings})
+            loaded = Config.model_validate({**current_data, **settings})
+            for k, v in loaded.as_dict().items():
+                setattr(self, k, v)
+
         except ValidationError as e:
             print(f"[config] Using defaults due to errors loading values: {e.errors()}")
 
@@ -125,7 +128,9 @@ class Config(UserConfigurables):
 
     def validate_and_save(self, new_data):
         current_data = self.model_dump()
-        self = Config.model_validate({**current_data, **new_data})
+        new = Config.model_validate({**current_data, **new_data})
+        for k, v in new.as_dict().items():
+            setattr(self, k, v)
         self.save()
 
     def as_dict(self):
