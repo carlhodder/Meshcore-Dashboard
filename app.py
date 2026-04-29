@@ -354,56 +354,8 @@ async def save_settings(request: Request):
     if "companion_host" not in body or not body["companion_host"]:
         return {"ok": False, "error": "Companion host IP is required"}
 
-    # Ensure port is an integer
-    try:
-        body["companion_port"] = int(body["companion_port"])
-    except (ValueError, TypeError):
-        return {"ok": False, "error": "Port must be a number"}
-
-    # Validate repeaters list
-    for r in body.get("repeaters", []):
-        if not r.get("name") or not r.get("pubkey"):
-            return {"ok": False, "error": "Each repeater needs a name and public key"}
-
-    # Ensure timing values are integers with sensible minimums
-    try:
-        if "poll_interval_seconds" in body:
-            body["poll_interval_seconds"] = max(30, int(body["poll_interval_seconds"]))
-        if "stagger_delay_seconds" in body:
-            body["stagger_delay_seconds"] = max(5, int(body["stagger_delay_seconds"]))
-        if "stale_threshold_seconds" in body:
-            body["stale_threshold_seconds"] = max(
-                60, int(body["stale_threshold_seconds"])
-            )
-    except (ValueError, TypeError):
-        return {"ok": False, "error": "Timing values must be numbers"}
-
-    # Log retention
-    try:
-        if "log_retention_hours" in body:
-            body["log_retention_hours"] = max(1, int(body["log_retention_hours"]))
-    except (ValueError, TypeError):
-        return {"ok": False, "error": "log_retention_hours is invalid"}
-
-    # Map settings
-    try:
-        if "map_path_max_km" in body:
-            body["map_path_max_km"] = max(10, int(body["map_path_max_km"]))
-    except (ValueError, TypeError):
-        return {"ok": False, "error": "map_path_max_km is invalid"}
-
-    try:
-        if "node_id_chars" in body:
-            body["node_id_chars"] = max(2, min(6, int(body["node_id_chars"])))
-    except (ValueError, TypeError):
-        return {"ok": False, "error": "node_id_chars is invalid"}
-
-    for key, value in body.items():
-        if hasattr(cfg, key):
-            setattr(cfg, key, value)
-
     # Save to settings.json
-    cfg.save()
+    cfg.validate_and_save(body)
     logger.info(
         f"Settings saved: {cfg.companion_host}:{cfg.companion_port}, "
         f"{len(cfg.repeaters)} repeaters"

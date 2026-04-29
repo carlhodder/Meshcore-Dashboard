@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 _SETTINGS_FILE = Path(__file__).parent / "settings.json"
 
@@ -41,6 +41,55 @@ class UserConfigurables(BaseModel):
     ntfy_server: str = "https://ntfy.sh"
     ntfy_enabled: bool = True
     dashboard_url: str = ""
+
+    @field_validator("companion_type", mode="after")
+    @classmethod
+    def companion_type_is_valid(cls, value) -> CompanionType:
+        if value not in [cls.CompanionType.SERIAL_USB, cls.CompanionType.TCP]:
+            raise ValueError("Invalid companion_type")
+        return value
+
+    @field_validator("poll_interval_seconds", mode="after")
+    @classmethod
+    def poll_interval_seconds_is_valid(cls, value) -> int:
+        if value < 30:
+            raise ValueError("Poll interval must be >= 30s")
+        return value
+
+    @field_validator("stagger_delay_seconds", mode="after")
+    @classmethod
+    def stagger_delay_seconds_is_valid(cls, value) -> int:
+        if value < 5:
+            raise ValueError("Stagger delay must be >= 5s")
+        return value
+
+    @field_validator("stale_threshold_seconds", mode="after")
+    @classmethod
+    def stale_threshold_seconds_is_valid(cls, value) -> int:
+        if value < 60:
+            raise ValueError("Stale threshold must be >= 60s")
+        return value
+
+    @field_validator("log_retention_hours", mode="after")
+    @classmethod
+    def log_retention_hours_is_valid(cls, value) -> int:
+        if value < 1:
+            raise ValueError("Log retention must be >= 1")
+        return value
+
+    @field_validator("map_path_max_km", mode="after")
+    @classmethod
+    def map_path_max_km_is_valid(cls, value) -> int:
+        if value < 10:
+            raise ValueError("Map path max km must be >= 10")
+        return value
+
+    @field_validator("node_id_chars", mode="after")
+    @classmethod
+    def node_id_chars_is_valid(cls, value) -> int:
+        if value not in [2, 4, 6]:
+            raise ValueError("Node id chars must be 2, 4, or 6")
+        return value
 
 
 class Config(UserConfigurables):
@@ -73,6 +122,11 @@ class Config(UserConfigurables):
                 f,
                 indent=2,
             )
+
+    def validate_and_save(self, new_data):
+        current_data = self.model_dump()
+        self = Config.model_validate({**current_data, **new_data})
+        self.save()
 
     def as_dict(self):
         return UserConfigurables(**self.model_dump()).model_dump(mode="json")
