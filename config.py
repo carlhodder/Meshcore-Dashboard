@@ -41,6 +41,8 @@ class UserConfigurables(BaseModel):
     ntfy_server: str = "https://ntfy.sh"
     ntfy_enabled: bool = True
     dashboard_url: str = ""
+    home_lat: float = 0.0
+    home_lon: float = 0.0
 
     @field_validator("companion_type", mode="after")
     @classmethod

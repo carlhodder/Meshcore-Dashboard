@@ -193,9 +193,6 @@ class MeshcorePoller:
             repeaters = self._cfg.repeaters
             poll_interval = self._cfg.poll_interval_seconds
 
-            # Sync the store with current repeater list
-            self.store.init_repeaters()
-
             # Check if companion IP changed
             new_host = self._cfg.companion_host
             new_port = self._cfg.companion_port
@@ -516,8 +513,8 @@ class MeshcorePoller:
                     contact_obj = self._find_contact(sender_pubkey)
                     if contact_obj is not None:
                         asyncio.ensure_future(
-                            self._discover_path_for_contact(
-                                contact_obj, sender_pubkey, sender_name
+                            self._discover_path(
+                                contact_obj, sender_pubkey, sender_name, configured_contact=False
                             )
                         )
             if text:
@@ -580,10 +577,11 @@ class MeshcorePoller:
                     contact_obj = self._find_contact(sender_pubkey)
                     if contact_obj is not None:
                         asyncio.ensure_future(
-                            self._discover_path_for_contact(
+                            self._discover_path(
                                 contact_obj,
                                 sender_pubkey,
                                 self._resolve_contact_name(sender_pubkey),
+                                configured_contact=False
                             )
                         )
             if text:
@@ -1391,49 +1389,10 @@ class MeshcorePoller:
                 logger.debug(f"Waiting {stagger}s before next repeater")
                 await self._interruptible_sleep(stagger)
 
-            
 
-    async def _discover_path_for_contact(self, contact, pubkey: str, name: str):
-        """Path discovery for non-configured contacts — stores result in _contact_routes."""
-        try:
-            result = await self.mc.commands.send_path_discovery(contact)
-            if result.type == EventType.ERROR:
-                return
-            response = await self.mc.wait_for_event(
-                EventType.PATH_RESPONSE,
-                attribute_filters={"pubkey_pre": pubkey[:12]},
-                timeout=10,
-            )
-            if response is None:
-                return
-            payload = response.payload
-            new_hops = payload.get("out_path_len", -1)
-            raw_path = payload.get("out_path", "")
-            if new_hops >= 0:
-                disc_route = ""
-                if isinstance(raw_path, str) and raw_path:
-                    segs = [
-                        raw_path[i : i + 2]
-                        for i in range(0, len(raw_path), 2)
-                        if len(raw_path[i : i + 2]) == 2
-                    ]
-                    disc_route = " > ".join(segs)
-                elif isinstance(raw_path, bytes) and raw_path:
-                    disc_route = " > ".join(
-                        raw_path[i : i + 1].hex() for i in range(len(raw_path))
-                    )
-                self._contact_routes[pubkey.upper()[:4]] = (new_hops, disc_route)
-                logger.info(
-                    f"[contact path] {name}: hops={new_hops}, path={disc_route or 'direct'}"
-                )
-                self._log_event(
-                    "path", name=name, pubkey=pubkey, hops=new_hops, route=disc_route
-                )
-        except Exception as e:
-            logger.debug(f"[contact path] {name} discovery error: {e}")
-
-    async def _discover_path(self, contact, pubkey: str, name: str):
-        """Run a path discovery request to determine the actual route to a repeater."""
+    async def _discover_path(self, contact, pubkey: str, name: str, configured_contact = True):
+        """Run a path discovery request to determine the actual route to a repeater.
+           OR with configured_contact=False to save as a non-configured contact instead."""
         try:
             result = await self.mc.commands.send_path_discovery(contact)
             if result.type == EventType.ERROR:
@@ -1460,7 +1419,15 @@ class MeshcorePoller:
                         if len(raw_path[i : i + 2]) == 2
                     ]
                     disc_route = " > ".join(segs)
-                self.store.update_route(pubkey, new_hops, disc_route)
+                elif isinstance(raw_path, bytes) and raw_path:
+                    disc_route = " > ".join(
+                        raw_path[i : i + 1].hex() for i in range(len(raw_path))
+                    )
+                if configured_contact:
+                    self.store.update_route(pubkey, new_hops, disc_route)
+                else:
+                    self._contact_routes[pubkey.upper()[:4]] = (new_hops, disc_route)
+                    
                 logger.info(
                     f"[{name}] Path discovered: hops={new_hops}, path={disc_route or 'direct'}"
                 )
@@ -1505,6 +1472,7 @@ class MeshcorePoller:
     async def _request_status(self, pubkey: str, name: str, contact):
         """Request status from a repeater and update the store."""
         try:
+            start_time = datetime.now()
             status = await self.mc.commands.req_status_sync(contact, timeout=30)
             if status is None:
                 logger.warning(f"[{name}] Status request timed out")
@@ -1514,7 +1482,8 @@ class MeshcorePoller:
             updates = {}
 
             if "time" in status:
-                updates["time"] = datetime.fromtimestamp(float(status["time"]))
+                updates["time"] = float(status["time"])
+                updates["time_offset_seconds"] = round((datetime.fromtimestamp(updates["time"]) - start_time).total_seconds())
 
             if "bat" in status:
                 updates["battery_mv"] = status["bat"]

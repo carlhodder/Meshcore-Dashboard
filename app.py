@@ -352,10 +352,6 @@ async def save_settings(request: Request):
     """Save settings from the web UI and trigger poller reconnect."""
     body = await request.json()
 
-    # Validate required fields
-    if "companion_host" not in body or not body["companion_host"]:
-        return {"ok": False, "error": "Companion host IP is required"}
-
     # Save to settings.json
     errors = []
     try:

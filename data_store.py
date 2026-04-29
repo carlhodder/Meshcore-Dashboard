@@ -1,5 +1,6 @@
 import time
 import logging
+import numbers
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass, asdict
@@ -12,6 +13,7 @@ from peewee import (
     FloatField,
     TextField,
     IntegerField,
+    BooleanField ,
     AutoField,
     SQL,
 )
@@ -25,7 +27,7 @@ class BaseDbModel(Model):
     class Meta:
         database = db
 
-
+###### DEPRECATED ######
 class TelemetryLog(BaseDbModel):
     id = AutoField()
     timestamp = FloatField()
@@ -40,6 +42,14 @@ class TelemetryLog(BaseDbModel):
     class Meta:
         table_name = "telemetry_log"
         indexes = ((("pubkey", "timestamp"), False),)
+
+
+class Measurement(BaseDbModel):
+    id = AutoField()
+    timestamp = FloatField(null=False, index=True)
+    pubkey = TextField(null=False, index=True)
+    measurement_code = TextField(null=False, index=True)
+    measurement_value = FloatField(null=False)
 
 
 class ActivityLog(BaseDbModel):
@@ -95,30 +105,28 @@ class AdvertNode(BaseDbModel):
         table_name = "advert_nodes"
 
 
-@dataclass
-class RepeaterState:
-    name: str = ""
-    time: datetime = datetime.min
-    pubkey: str = ""
-    battery_mv: int = 0
-    battery_voltage: float = 0.0
-    rssi: int = 0
-    snr: float = 0.0
-    noise_floor: int = 0
-    uptime_seconds: int = 0
-    packets_recv: int = 0
-    packets_sent: int = 0
-    hops: int = 0
-    route_path: str = ""
-    lat: float = 0.0
-    lon: float = 0.0
-    fw_version: str = ""
-    last_seen_epoch: float = 0.0
-    last_poll_ok: Optional[bool] = (
-        None  # None = never polled, True = ok, False = timed out
-    )
-    temperature: float = 0.0
-    humidity: float = 0.0
+class RepeaterState(BaseDbModel):
+    pubkey = TextField(primary_key=True)
+    name = TextField(default="")
+    time = FloatField(default=0)
+    time_offset_seconds = IntegerField(default=0)
+    battery_mv = IntegerField(default=0)
+    battery_voltage = FloatField(default=0)
+    rssi = IntegerField(default=0)
+    snr = FloatField(default=0)
+    noise_floor = IntegerField(default=0)
+    uptime_seconds = IntegerField(default=0)
+    packets_recv = IntegerField(default=0)
+    packets_sent = IntegerField(default=0)
+    hops = IntegerField(default=0)
+    route_path = TextField(default="")
+    lat = FloatField(default=0)
+    lon = FloatField(default=0)
+    fw_version = TextField(default="")
+    last_seen_epoch = FloatField(default=0)
+    last_poll_ok = BooleanField(null=True, default=None)
+    temperature = FloatField(default=0)
+    humidity = FloatField(default=0)
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -131,6 +139,9 @@ class RepeaterState:
     def is_online(self) -> bool:
         # Only green when the last poll got a response; red only on explicit failure
         return self.last_poll_ok is True
+
+    class Meta:
+        table_name = "repeater_state"
 
 
 class SQLiteLogHandler(logging.Handler):
@@ -164,7 +175,7 @@ class DataStore:
             db.initialize(SqliteQueueDatabase(self._db_path))
         with db.connection_context():
             db.create_tables(
-                [TelemetryLog, ActivityLog, Message, NodeName, AdvertNode], safe=True
+                [TelemetryLog, ActivityLog, Measurement, Message, NodeName, RepeaterState, AdvertNode], safe=True
             )
 
             # Preexisting migrations
@@ -215,25 +226,38 @@ class DataStore:
                     migrate(*migrations)
                 except Exception as e:
                     print(f"[DataStore] Migration error: {e}")
-
-    def _init_repeater(self, pubkey: str, name: str):
-        """Register a repeater from config. Called at startup."""
-        with self._lock:
-            if pubkey not in self._repeaters:
-                self._repeaters[pubkey] = RepeaterState(name=name, pubkey=pubkey)
-            else:
-                # Update name if it changed in settings
-                self._repeaters[pubkey].name = name
+                    return
+            
+            # Check if we need to migrate old measurement data
+            if TelemetryLog.select().exists() and not Measurement.select().exists():
+                for log in TelemetryLog.select().iterator():
+                    Measurement.create(timestamp=log.timestamp, pubkey=log.pubkey, measurement_code="battery_mv", measurement_value=log.battery_mv)
+                    Measurement.create(timestamp=log.timestamp, pubkey=log.pubkey, measurement_code="battery_voltage", measurement_value=log.battery_voltage)
+                    Measurement.create(timestamp=log.timestamp, pubkey=log.pubkey, measurement_code="rssi", measurement_value=log.rssi)
+                    Measurement.create(timestamp=log.timestamp, pubkey=log.pubkey, measurement_code="snr", measurement_value=log.snr)
+                    Measurement.create(timestamp=log.timestamp, pubkey=log.pubkey, measurement_code="uptime_seconds", measurement_value=log.uptime_seconds)
 
     def init_repeaters(self):
+        """Register a repeater from config. Called at startup or config save."""
         # Register any initially configured repeaters
-        for r in self.cfg.repeaters:
-            self._init_repeater(r["pubkey"], r["name"])
+        with self._lock:
+            for r in self.cfg.repeaters:
+                pubkey = r["pubkey"]
+                name = r["name"]
+                if pubkey not in self._repeaters:
+                    self._repeaters[pubkey] = RepeaterState.get_or_none(RepeaterState.pubkey==pubkey)
+                    if self._repeaters[pubkey] is None:
+                        self._repeaters[pubkey] = RepeaterState(name=name, pubkey=pubkey)
+                else:
+                    # Update name if it changed in settings
+                    self._repeaters[pubkey].name = name
+                    if self._db_path:
+                        self._repeaters[pubkey].save()
 
     def remove_repeater(self, pubkey: str):
         """Remove a repeater from the live store (when deleted from settings)."""
         with self._lock:
-            self._repeaters.pop(pubkey, None)
+            self._repeaters.pop(pubkey, None).save()
 
     def sync_repeaters(self):
         """Sync store with configured repeater list. Add new, remove stale."""
@@ -242,6 +266,7 @@ class DataStore:
             # Remove repeaters no longer in config
             for pk in list(self._repeaters.keys()):
                 if pk not in configured_keys:
+                    self._repeaters[pk].save()
                     del self._repeaters[pk]
         # Add/update configured ones
         self.init_repeaters()
@@ -263,6 +288,8 @@ class DataStore:
             if pubkey in self._repeaters:
                 self._repeaters[pubkey].hops = hops
                 self._repeaters[pubkey].route_path = route_path
+                if self._db_path:
+                    self._repeaters[pubkey].save()
 
     def get_route_by_prefix(self, pubkey_prefix: str) -> tuple:
         """Return (hops, route_path) for the first repeater whose pubkey starts with the given prefix.
@@ -283,16 +310,21 @@ class DataStore:
             if pubkey in self._repeaters:
                 self._repeaters[pubkey].lat = lat
                 self._repeaters[pubkey].lon = lon
+                if self._db_path:
+                    self._repeaters[pubkey].save()
 
     def mark_poll_failed(self, pubkey: str):
         """Mark the last poll as failed (status request timed out)."""
         with self._lock:
             if pubkey in self._repeaters:
                 self._repeaters[pubkey].last_poll_ok = False
+                if self._db_path:
+                    self._repeaters[pubkey].save()
 
     def update_repeater(self, pubkey: str, **kwargs):
         """Update a repeater's state with new data from a poll response."""
         with self._lock:
+            ts = time.time()
             if pubkey not in self._repeaters:
                 self._repeaters[pubkey] = RepeaterState(pubkey=pubkey)
 
@@ -300,40 +332,17 @@ class DataStore:
             for k, v in kwargs.items():
                 if hasattr(r, k) and v is not None:
                     setattr(r, k, v)
-            r.last_seen_epoch = time.time()
+                    if self._db_path and isinstance(v, numbers.Number):
+                        try:
+                            with db.connection_context():
+                                Measurement.create(timestamp=ts, pubkey=pubkey, measurement_code=k, measurement_value=float(v))
+                        except Exception as e:
+                            print(f"[DataStore] DB write error: {e}")
+            r.last_seen_epoch = ts
             r.last_poll_ok = True
 
-        if self._db_path:
-            self._log_to_db(pubkey)
-
-    def _log_to_db(self, pubkey: str):
-        with self._lock:
-            r = self._repeaters.get(pubkey)
-            if not r:
-                return
-            # Snapshot values under lock
-            ts = time.time()
-            name = r.name
-            battery_mv = r.battery_mv
-            battery_voltage = r.battery_voltage
-            rssi = r.rssi
-            snr = r.snr
-            uptime_seconds = r.uptime_seconds
-
-        try:
-            with db.connection_context():
-                TelemetryLog.create(
-                    timestamp=ts,
-                    pubkey=pubkey,
-                    name=name,
-                    battery_mv=battery_mv,
-                    battery_voltage=battery_voltage,
-                    rssi=rssi,
-                    snr=snr,
-                    uptime_seconds=uptime_seconds,
-                )
-        except Exception as e:
-            print(f"[DataStore] DB write error: {e}")
+            if self._db_path:
+                r.save()
 
     def get_all(self) -> List[dict]:
         """Return all repeater states as a JSON-serializable list."""
@@ -348,15 +357,20 @@ class DataStore:
         try:
             with db.connection_context():
                 query = (
-                    TelemetryLog.select()
+                    Measurement.select()
                     .where(
-                        (TelemetryLog.pubkey == pubkey)
-                        & (TelemetryLog.timestamp > since)
+                        (Measurement.pubkey == pubkey)
+                        & (Measurement.timestamp > since)
                     )
-                    .order_by(TelemetryLog.timestamp)
+                    .order_by(Measurement.timestamp)
                 )
 
-                return list(query.dicts())
+                # Now reformat to what the charter expects
+                output_format = OrderedDict()
+                for meas in query.dicts():
+                    output_format.setdefault(meas.timestamp, {})[meas.measurement_code] = meas.measurement_value
+
+                return [{"timestamp": k, **val} for k, val in output_format.items()]
         except Exception as e:
             print(f"[DataStore] DB read error: {e}")
             return []
