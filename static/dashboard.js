@@ -148,7 +148,7 @@ function renderRepeaters(rawData) {
     var pingRemaining = Math.max(0, Math.ceil(cooldown - now));
     var pingDisabled = pingRemaining > 0;
     var pingResult = window._pingResults[r.pubkey];
-    var pingLabel = pingRemaining > 0 ? pingRemaining + "s" : "Ping";
+    var pingLabel = pingRemaining > 0 ? pingRemaining + "s" : "Refresh";
     var pingClass = "card-ping-btn";
     if (pingRemaining > 0 && pingResult) {
       pingClass += pingResult.ok ? " ping-ok" : " ping-fail";

@@ -3,6 +3,7 @@ import logging
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass, asdict
+from datetime import datetime
 from typing import Dict, List, Optional
 import peewee
 from peewee import (
@@ -97,6 +98,7 @@ class AdvertNode(BaseDbModel):
 @dataclass
 class RepeaterState:
     name: str = ""
+    time: datetime = datetime.min
     pubkey: str = ""
     battery_mv: int = 0
     battery_voltage: float = 0.0
@@ -115,6 +117,8 @@ class RepeaterState:
     last_poll_ok: Optional[bool] = (
         None  # None = never polled, True = ok, False = timed out
     )
+    temperature: float = 0.0
+    humidity: float = 0.0
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -252,12 +256,6 @@ class DataStore:
                 if pk not in ordered:
                     ordered[pk] = v
             self._repeaters = ordered
-
-    def update_hops(self, pubkey: str, hops: int):
-        """Update hop count without touching last_seen."""
-        with self._lock:
-            if pubkey in self._repeaters:
-                self._repeaters[pubkey].hops = hops
 
     def update_route(self, pubkey: str, hops: int, route_path: str):
         """Update hop count and route path without touching last_seen."""

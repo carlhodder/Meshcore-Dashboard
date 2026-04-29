@@ -4,7 +4,7 @@ import logging
 import time
 import urllib.request
 from collections import deque
-
+from datetime import datetime
 from meshcore import MeshCore, EventType
 
 from config import Config
@@ -1270,6 +1270,99 @@ class MeshcorePoller:
             await asyncio.sleep(min(remaining, 0.5))
             remaining -= 0.5
 
+    async def _poll_repeater(self, contact, repeater_cfg):
+        pubkey = repeater_cfg["pubkey"]
+        name = repeater_cfg["name"]
+
+        
+        # Extract hop count and route path from contact
+        # MeshCore library uses out_path_len / out_path (not hops/path)
+        # out_path_len: -1 = flood routing, 0 = direct (1 hop), N = N intermediate nodes
+        hops = 0
+        route_path = ""
+        if isinstance(contact, dict):
+            out_path_len = contact.get(
+                "out_path_len", contact.get("hops", contact.get("path_len", -1))
+            )
+            if out_path_len is not None and out_path_len >= 0:
+                hops = out_path_len  # 0 = direct, 1 = 1 intermediate, etc.
+                raw_path = contact.get(
+                    "out_path", contact.get("path", contact.get("route", ""))
+                )
+                if isinstance(raw_path, str) and raw_path:
+                    # Auto-detect 1-byte (2 hex chars) vs 2-byte (4 hex chars) prefix format
+                    chars_per_node = 2
+                    if hops > 0:
+                        detected = len(raw_path) // hops
+                        if detected in (2, 4):
+                            chars_per_node = detected
+                    segments = [
+                        raw_path[i : i + chars_per_node]
+                        for i in range(0, len(raw_path), chars_per_node)
+                        if len(raw_path[i : i + chars_per_node]) == chars_per_node
+                    ]
+                    route_path = " > ".join(segments)
+                elif isinstance(raw_path, bytes) and raw_path:
+                    bytes_per_node = 1
+                    if hops > 0:
+                        detected = len(raw_path) // hops
+                        if detected in (1, 2):
+                            bytes_per_node = detected
+                    route_path = " > ".join(
+                        raw_path[i : i + bytes_per_node].hex()
+                        for i in range(0, len(raw_path), bytes_per_node)
+                    )
+                elif isinstance(raw_path, list) and raw_path:
+                    route_path = " > ".join(
+                        f"{b:02x}" if isinstance(b, int) else str(b)
+                        for b in raw_path
+                    )
+        elif hasattr(contact, "out_path_len"):
+            opl = contact.out_path_len
+            hops = opl if opl >= 0 else 0
+            route_path = getattr(contact, "out_path", "") or ""
+        elif hasattr(contact, "hops"):
+            hops = contact.hops
+        self.store.update_route(pubkey, hops, route_path)
+
+        # If we know there are intermediate hops but the contact has no path data,
+        # run a path discovery request to find the actual route.
+        if hops > 0 and not route_path:
+            await self._discover_path(contact, pubkey, name)
+
+        # Extract GPS coordinates from contact if available
+        if isinstance(contact, dict):
+            lat = contact.get("adv_lat", 0.0) or 0.0
+            lon = contact.get("adv_lon", 0.0) or 0.0
+            if lat != 0.0 or lon != 0.0:
+                self.store.update_location(pubkey, lat, lon)
+
+        route_desc = (
+            route_path if route_path else ("direct" if hops > 0 else "flood")
+        )
+        logger.info(
+            f"[{name}] Polling repeater, hops={hops}, route={route_desc}..."
+        )
+
+        # Apply custom path if configured, otherwise use flood
+        custom_path = repeater_cfg.get("path", "").strip()
+        await self._apply_path(contact, pubkey, name, custom_path)
+
+        # Login to repeater before requesting data
+        admin_pass = repeater_cfg.get("admin_pass", "password")
+        await self._login_to_repeater(contact, name, admin_pass)
+        await self._interruptible_sleep(3)
+        if not self._running or self._needs_reconnect or self._stay_disconnected:
+            return
+
+        await self._request_status(pubkey, name, contact)
+        await self._interruptible_sleep(2)
+        if not self._running or self._needs_reconnect or self._stay_disconnected:
+            return
+
+        await self._request_telemetry(pubkey, name, contact)
+
+
     async def _poll_all_repeaters(self, repeaters: list):
         """Poll each configured repeater with staggered delays."""
         await self._refresh_contacts()
@@ -1281,8 +1374,8 @@ class MeshcorePoller:
 
             pubkey = repeater_cfg["pubkey"]
             name = repeater_cfg["name"]
-
             contact = self._find_contact(pubkey)
+            
             if contact is None:
                 logger.warning(
                     f"[{name}] No contact found for pubkey {pubkey[:16]}... "
@@ -1292,96 +1385,13 @@ class MeshcorePoller:
                     await asyncio.sleep(stagger)
                 continue
 
-            # Extract hop count and route path from contact
-            # MeshCore library uses out_path_len / out_path (not hops/path)
-            # out_path_len: -1 = flood routing, 0 = direct (1 hop), N = N intermediate nodes
-            hops = 0
-            route_path = ""
-            if isinstance(contact, dict):
-                out_path_len = contact.get(
-                    "out_path_len", contact.get("hops", contact.get("path_len", -1))
-                )
-                if out_path_len is not None and out_path_len >= 0:
-                    hops = out_path_len  # 0 = direct, 1 = 1 intermediate, etc.
-                    raw_path = contact.get(
-                        "out_path", contact.get("path", contact.get("route", ""))
-                    )
-                    if isinstance(raw_path, str) and raw_path:
-                        # Auto-detect 1-byte (2 hex chars) vs 2-byte (4 hex chars) prefix format
-                        chars_per_node = 2
-                        if hops > 0:
-                            detected = len(raw_path) // hops
-                            if detected in (2, 4):
-                                chars_per_node = detected
-                        segments = [
-                            raw_path[i : i + chars_per_node]
-                            for i in range(0, len(raw_path), chars_per_node)
-                            if len(raw_path[i : i + chars_per_node]) == chars_per_node
-                        ]
-                        route_path = " > ".join(segments)
-                    elif isinstance(raw_path, bytes) and raw_path:
-                        bytes_per_node = 1
-                        if hops > 0:
-                            detected = len(raw_path) // hops
-                            if detected in (1, 2):
-                                bytes_per_node = detected
-                        route_path = " > ".join(
-                            raw_path[i : i + bytes_per_node].hex()
-                            for i in range(0, len(raw_path), bytes_per_node)
-                        )
-                    elif isinstance(raw_path, list) and raw_path:
-                        route_path = " > ".join(
-                            f"{b:02x}" if isinstance(b, int) else str(b)
-                            for b in raw_path
-                        )
-            elif hasattr(contact, "out_path_len"):
-                opl = contact.out_path_len
-                hops = opl if opl >= 0 else 0
-                route_path = getattr(contact, "out_path", "") or ""
-            elif hasattr(contact, "hops"):
-                hops = contact.hops
-            self.store.update_route(pubkey, hops, route_path)
-
-            # If we know there are intermediate hops but the contact has no path data,
-            # run a path discovery request to find the actual route.
-            if hops > 0 and not route_path:
-                await self._discover_path(contact, pubkey, name)
-
-            # Extract GPS coordinates from contact if available
-            if isinstance(contact, dict):
-                lat = contact.get("adv_lat", 0.0) or 0.0
-                lon = contact.get("adv_lon", 0.0) or 0.0
-                if lat != 0.0 or lon != 0.0:
-                    self.store.update_location(pubkey, lat, lon)
-
-            route_desc = (
-                route_path if route_path else ("direct" if hops > 0 else "flood")
-            )
-            logger.info(
-                f"[{name}] Polling repeater ({i+1}/{len(repeaters)}), hops={hops}, route={route_desc}..."
-            )
-
-            # Apply custom path if configured, otherwise use flood
-            custom_path = repeater_cfg.get("path", "").strip()
-            await self._apply_path(contact, pubkey, name, custom_path)
-
-            # Login to repeater before requesting data
-            admin_pass = repeater_cfg.get("admin_pass", "password")
-            await self._login_to_repeater(contact, name, admin_pass)
-            await self._interruptible_sleep(3)
-            if not self._running or self._needs_reconnect or self._stay_disconnected:
-                break
-
-            await self._request_status(pubkey, name, contact)
-            await self._interruptible_sleep(2)
-            if not self._running or self._needs_reconnect or self._stay_disconnected:
-                break
-
-            await self._request_telemetry(pubkey, name, contact)
-
+            self._poll_repeater(repeater_cfg)
+            
             if i < len(repeaters) - 1:
                 logger.debug(f"Waiting {stagger}s before next repeater")
                 await self._interruptible_sleep(stagger)
+
+            
 
     async def _discover_path_for_contact(self, contact, pubkey: str, name: str):
         """Path discovery for non-configured contacts — stores result in _contact_routes."""
@@ -1503,6 +1513,9 @@ class MeshcorePoller:
 
             updates = {}
 
+            if "time" in status:
+                updates["time"] = datetime.fromtimestamp(float(status["time"]))
+
             if "bat" in status:
                 updates["battery_mv"] = status["bat"]
                 updates["battery_voltage"] = status["bat"] / 1000.0
@@ -1572,6 +1585,11 @@ class MeshcorePoller:
                     if sensor.get("channel") == 0:
                         updates["battery_voltage"] = float(value)
                         updates["battery_mv"] = int(float(value) * 1000)
+                elif sensor_type == "temperature" and value is not None:
+                    updates["temperature"] = float(value)
+                elif sensor_type == "humidity" and value is not None:
+                    updates["humidity"] = float(value)
+                
 
             if updates:
                 self.store.update_repeater(pubkey, **updates)
@@ -1596,22 +1614,19 @@ class MeshcorePoller:
             }
 
         # Find name and admin password from config
-        name = pubkey[:8]
-        admin_pass = "password"
+        repeater_cfg = None
         for r in self._cfg.repeaters:
             pk = r["pubkey"]
             if pk == pubkey or pk.startswith(pubkey) or pubkey.startswith(pk):
-                admin_pass = r.get("admin_pass", "password")
-                name = r.get("name", name)
+                repeater_cfg = r
                 break
-
+        if repeater_cfg is None:
+            return {"ok": False, "error": "Pubkey does not match any known repeaters"}
+        
+        name = repeater_cfg.get("name", pubkey[:8])
         start = time.monotonic()
         try:
-            await self._login_to_repeater(contact, name, admin_pass)
-            await asyncio.sleep(1)
-            await self._request_status(pubkey, name, contact)
-            await asyncio.sleep(1)
-            await self._request_telemetry(pubkey, name, contact)
+            await self._poll_repeater(contact, repeater_cfg)
             latency_ms = int((time.monotonic() - start) * 1000)
             logger.info(f"[{name}] Manual refresh completed in {latency_ms}ms")
             return {"ok": True, "latency_ms": latency_ms}
