@@ -95,8 +95,7 @@ class MeshcorePoller:
         self._running = True
 
         # Register any initially configured repeaters
-        for r in self._cfg.repeaters:
-            self.store.init_repeater(r["pubkey"], r["name"])
+        self.store.init_repeaters()
 
         while self._running:
             if self._stay_disconnected:
@@ -196,8 +195,7 @@ class MeshcorePoller:
             poll_interval = self._cfg.poll_interval_seconds
 
             # Sync the store with current repeater list
-            for r in repeaters:
-                self.store.init_repeater(r["pubkey"], r["name"])
+            self.store.init_repeaters()
 
             # Check if companion IP changed
             new_host = self._cfg.companion_host

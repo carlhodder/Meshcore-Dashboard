@@ -1,9 +1,98 @@
 import time
-import sqlite3
 import logging
 import threading
+from collections import OrderedDict
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional
+import peewee
+from peewee import (
+    Proxy,
+    Model,
+    FloatField,
+    TextField,
+    IntegerField,
+    AutoField,
+    SQL,
+)
+from playhouse.migrate import SqliteMigrator, migrate
+from playhouse.sqliteq import SqliteQueueDatabase
+
+db = Proxy()
+
+
+class BaseDbModel(Model):
+    class Meta:
+        database = db
+
+
+class TelemetryLog(BaseDbModel):
+    id = AutoField()
+    timestamp = FloatField()
+    pubkey = TextField()
+    name = TextField(null=True)
+    battery_mv = IntegerField(null=True)
+    battery_voltage = FloatField(null=True)
+    rssi = IntegerField(null=True)
+    snr = FloatField(null=True)
+    uptime_seconds = IntegerField(null=True)
+
+    class Meta:
+        table_name = "telemetry_log"
+        indexes = ((("pubkey", "timestamp"), False),)
+
+
+class ActivityLog(BaseDbModel):
+    id = AutoField()
+    timestamp = FloatField(index=True)
+    level = TextField()
+    logger = TextField()
+    message = TextField()
+
+    class Meta:
+        table_name = "activity_log"
+
+
+class Message(BaseDbModel):
+    id = AutoField()
+    timestamp = FloatField(index=True)
+    direction = TextField()
+    channel_idx = IntegerField(null=True)
+    sender_pubkey = TextField(null=True)
+    sender_name = TextField(null=True)
+    text = TextField()
+    hops = IntegerField(default=-1, null=True)
+    path = TextField(default="", null=True)
+    ack_code = TextField(default="", null=True)
+    acks = IntegerField(default=0, null=True)
+
+    class Meta:
+        table_name = "messages"
+        indexes = [
+            SQL(
+                "CREATE INDEX IF NOT EXISTS idx_messages_ack_code ON messages (ack_code) WHERE ack_code != ''"
+            )
+        ]
+
+
+class NodeName(BaseDbModel):
+    node_id = TextField(primary_key=True)
+    name = TextField()
+    updated = FloatField()
+
+    class Meta:
+        table_name = "node_names"
+
+
+class AdvertNode(BaseDbModel):
+    pubkey = TextField(primary_key=True)
+    name = TextField()
+    lat = FloatField(null=True)
+    lon = FloatField(null=True)
+    last_seen = FloatField()
+
+    class Meta:
+        table_name = "advert_nodes"
+
 
 @dataclass
 class RepeaterState:
@@ -23,7 +112,9 @@ class RepeaterState:
     lon: float = 0.0
     fw_version: str = ""
     last_seen_epoch: float = 0.0
-    last_poll_ok: Optional[bool] = None  # None = never polled, True = ok, False = timed out
+    last_poll_ok: Optional[bool] = (
+        None  # None = never polled, True = ok, False = timed out
+    )
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -41,22 +132,18 @@ class RepeaterState:
 class SQLiteLogHandler(logging.Handler):
     """Logging handler that writes log records to the activity_log SQLite table."""
 
-    def __init__(self, db_path: str):
-        super().__init__()
-        self.db_path = db_path
-
     def emit(self, record: logging.LogRecord):
-        try:
-            conn = sqlite3.connect(self.db_path)
-            conn.execute(
-                "INSERT INTO activity_log (timestamp, level, logger_name, message) "
-                "VALUES (?, ?, ?, ?)",
-                (record.created, record.levelname, record.name, self.format(record)),
-            )
-            conn.commit()
-            conn.close()
-        except Exception:
-            self.handleError(record)
+        if db.database is not None and record.name != "watchfiles.main":
+            try:
+                with db.connection_context():
+                    ActivityLog.create(
+                        timestamp=record.created,
+                        level=record.levelname,
+                        logger=record.name,
+                        message=self.format(record),
+                    )
+            except Exception:
+                self.handleError(record)
 
 
 class DataStore:
@@ -69,94 +156,63 @@ class DataStore:
             self._init_db()
 
     def _init_db(self):
-        conn = sqlite3.connect(self._db_path)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS telemetry_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp REAL NOT NULL,
-                pubkey TEXT NOT NULL,
-                name TEXT,
-                battery_mv INTEGER,
-                battery_voltage REAL,
-                rssi INTEGER,
-                snr REAL,
-                uptime_seconds INTEGER
+        if db.obj is None:
+            db.initialize(SqliteQueueDatabase(self._db_path))
+        with db.connection_context():
+            db.create_tables(
+                [TelemetryLog, ActivityLog, Message, NodeName, AdvertNode], safe=True
             )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_telemetry_pubkey_ts
-            ON telemetry_log (pubkey, timestamp)
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS activity_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp REAL NOT NULL,
-                level TEXT NOT NULL,
-                logger_name TEXT NOT NULL,
-                message TEXT NOT NULL
-            )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_activity_log_ts
-            ON activity_log (timestamp)
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp REAL NOT NULL,
-                direction TEXT NOT NULL,
-                channel_idx INTEGER,
-                sender_pubkey TEXT,
-                sender_name TEXT,
-                text TEXT NOT NULL,
-                hops INTEGER DEFAULT -1,
-                path TEXT DEFAULT '',
-                ack_code TEXT DEFAULT '',
-                acks INTEGER DEFAULT 0
-            )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_messages_ts
-            ON messages (timestamp)
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS node_names (
-                node_id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                updated REAL NOT NULL
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS advert_nodes (
-                pubkey TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                lat REAL,
-                lon REAL,
-                last_seen REAL NOT NULL
-            )
-        """)
-        # Migrate existing DB: add new columns if missing
-        for col, definition in [
-            ("hops", "INTEGER DEFAULT -1"),
-            ("path", "TEXT DEFAULT ''"),
-            ("ack_code", "TEXT DEFAULT ''"),
-            ("acks", "INTEGER DEFAULT 0"),
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE messages ADD COLUMN {col} {definition}")
-            except Exception:
-                pass  # Column already exists
-        try:
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_messages_ack_code
-                ON messages (ack_code) WHERE ack_code != ''
-            """)
-        except Exception:
-            pass
-        conn.commit()
-        conn.close()
 
-    def init_repeater(self, pubkey: str, name: str):
+            # Preexisting migrations
+            migrator = SqliteMigrator(db)
+            columns = [col.name for col in db.get_columns("messages")]
+            migrations = []
+
+            if "hops" not in columns:
+                migrations.append(
+                    migrator.add_column(
+                        "messages", "hops", IntegerField(default=-1, null=True)
+                    )
+                )
+            if "path" not in columns:
+                migrations.append(
+                    migrator.add_column(
+                        "messages", "path", TextField(default="", null=True)
+                    )
+                )
+            if "ack_code" not in columns:
+                migrations.append(
+                    migrator.add_column(
+                        "messages", "ack_code", TextField(default="", null=True)
+                    )
+                )
+            if "acks" not in columns:
+                migrations.append(
+                    migrator.add_column(
+                        "messages", "acks", IntegerField(default=0, null=True)
+                    )
+                )
+
+            # New migrations
+            if any(
+                "logger_name" == c.name
+                for c in db.get_columns(ActivityLog._meta.table_name)
+            ):
+                # Align field names a bit
+                migrations.append(
+                    migrator.rename_column(
+                        ActivityLog._meta.table_name, "logger_name", "logger"
+                    )
+                )
+
+            if migrations:
+                try:
+                    print("[DataStore] Migrating...")
+                    migrate(*migrations)
+                except Exception as e:
+                    print(f"[DataStore] Migration error: {e}")
+
+    def _init_repeater(self, pubkey: str, name: str):
         """Register a repeater from config. Called at startup."""
         with self._lock:
             if pubkey not in self._repeaters:
@@ -164,6 +220,11 @@ class DataStore:
             else:
                 # Update name if it changed in settings
                 self._repeaters[pubkey].name = name
+
+    def init_repeaters(self):
+        # Register any initially configured repeaters
+        for r in self.cfg.repeaters:
+            self._init_repeater(r["pubkey"], r["name"])
 
     def remove_repeater(self, pubkey: str):
         """Remove a repeater from the live store (when deleted from settings)."""
@@ -179,13 +240,14 @@ class DataStore:
                 if pk not in configured_keys:
                     del self._repeaters[pk]
         # Add/update configured ones
-        for r in self.cfg.repeaters:
-            self.init_repeater(r["pubkey"], r["name"])
+        self.init_repeaters()
 
     def reorder(self, pubkeys: list):
         """Reorder the in-memory repeaters dict to match the given pubkey order."""
         with self._lock:
-            ordered = {pk: self._repeaters[pk] for pk in pubkeys if pk in self._repeaters}
+            ordered = OrderedDict(
+                {pk: self._repeaters[pk] for pk in pubkeys if pk in self._repeaters}
+            )
             for pk, v in self._repeaters.items():
                 if pk not in ordered:
                     ordered[pk] = v
@@ -252,21 +314,26 @@ class DataStore:
             if not r:
                 return
             # Snapshot values under lock
-            row = (
-                time.time(), r.pubkey, r.name, r.battery_mv,
-                r.battery_voltage, r.rssi, r.snr, r.uptime_seconds,
-            )
+            ts = time.time()
+            name = r.name
+            battery_mv = r.battery_mv
+            battery_voltage = r.battery_voltage
+            rssi = r.rssi
+            snr = r.snr
+            uptime_seconds = r.uptime_seconds
 
         try:
-            conn = sqlite3.connect(self._db_path)
-            conn.execute(
-                "INSERT INTO telemetry_log "
-                "(timestamp, pubkey, name, battery_mv, battery_voltage, rssi, snr, uptime_seconds) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                row,
-            )
-            conn.commit()
-            conn.close()
+            with db.connection_context():
+                TelemetryLog.create(
+                    timestamp=ts,
+                    pubkey=pubkey,
+                    name=name,
+                    battery_mv=battery_mv,
+                    battery_voltage=battery_voltage,
+                    rssi=rssi,
+                    snr=snr,
+                    uptime_seconds=uptime_seconds,
+                )
         except Exception as e:
             print(f"[DataStore] DB write error: {e}")
 
@@ -281,26 +348,17 @@ class DataStore:
             return []
         since = time.time() - (hours * 3600)
         try:
-            conn = sqlite3.connect(self._db_path)
-            rows = conn.execute(
-                "SELECT timestamp, battery_mv, battery_voltage, rssi, snr, uptime_seconds "
-                "FROM telemetry_log "
-                "WHERE pubkey = ? AND timestamp > ? "
-                "ORDER BY timestamp",
-                (pubkey, since),
-            ).fetchall()
-            conn.close()
-            return [
-                {
-                    "ts": row[0],
-                    "battery_mv": row[1],
-                    "battery_v": row[2],
-                    "rssi": row[3],
-                    "snr": row[4],
-                    "uptime": row[5],
-                }
-                for row in rows
-            ]
+            with db.connection_context():
+                query = (
+                    TelemetryLog.select()
+                    .where(
+                        (TelemetryLog.pubkey == pubkey)
+                        & (TelemetryLog.timestamp > since)
+                    )
+                    .order_by(TelemetryLog.timestamp)
+                )
+
+                return list(query.dicts())
         except Exception as e:
             print(f"[DataStore] DB read error: {e}")
             return []
@@ -309,74 +367,78 @@ class DataStore:
         """Return a logging handler that writes to the activity_log table."""
         if not self._db_path:
             return logging.NullHandler()
-        handler = SQLiteLogHandler(self._db_path)
+        handler = SQLiteLogHandler()
         handler.setFormatter(logging.Formatter("%(message)s"))
         return handler
 
-    def get_activity_logs(self, hours: int = 24, level: str = None, search: str = None, limit: int = 500) -> list:
+    def get_activity_logs(
+        self, hours: int = 24, level: str = None, search: str = None, limit: int = 500
+    ) -> list:
         """Return recent activity log entries, optionally filtered by level and message text."""
         if not self._db_path:
             return []
         since = time.time() - (hours * 3600)
         try:
-            conn = sqlite3.connect(self._db_path)
-            where = "WHERE timestamp > ?"
-            params: list = [since]
-            if level:
-                where += " AND level = ?"
-                params.append(level.upper())
-            if search:
-                where += " AND message LIKE ?"
-                params.append(f"%{search}%")
-            params.append(limit)
-            rows = conn.execute(
-                f"SELECT id, timestamp, level, logger_name, message "
-                f"FROM activity_log {where} "
-                f"ORDER BY timestamp DESC LIMIT ?",
-                params,
-            ).fetchall()
-            conn.close()
-            return [
-                {
-                    "id": row[0],
-                    "ts": row[1],
-                    "level": row[2],
-                    "logger": row[3],
-                    "message": row[4],
-                }
-                for row in rows
-            ]
+            with db.connection_context():
+                query = ActivityLog.select().where(ActivityLog.timestamp > since)
+                if level:
+                    query = query.where(ActivityLog.level == level.upper())
+                if search:
+                    query = query.where(ActivityLog.message.contains(search))
+                query = query.order_by(ActivityLog.timestamp.desc()).limit(limit)
+
+                return list(query.dicts())
         except Exception as e:
             print(f"[DataStore] Activity log read error: {e}")
             return []
 
-    def store_message(self, direction: str, channel_idx, sender_pubkey: str, sender_name: str, text: str,
-                      hops: int = -1, path: str = "", ack_code: str = "") -> bool:
+    def store_message(
+        self,
+        direction: str,
+        channel_idx,
+        sender_pubkey: str,
+        sender_name: str,
+        text: str,
+        hops: int = -1,
+        path: str = "",
+        ack_code: str = "",
+    ) -> bool:
         """Store an incoming or outgoing message, skipping duplicates.
         Returns True if the message was new, False if it was a duplicate."""
         if not self._db_path:
             return True  # no DB — treat as new so callers still act on it
         try:
-            conn = sqlite3.connect(self._db_path)
             since = time.time() - 300  # dedup window: 5 minutes
-            existing = conn.execute(
-                "SELECT id FROM messages WHERE direction=? AND channel_idx IS ? "
-                "AND sender_pubkey=? AND text=? AND timestamp > ?",
-                (direction, channel_idx, sender_pubkey or "", text, since),
-            ).fetchone()
-            if existing:
-                conn.close()
-                return False  # duplicate — skip
-            conn.execute(
-                "INSERT INTO messages "
-                "(timestamp, direction, channel_idx, sender_pubkey, sender_name, text, hops, path, ack_code) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (time.time(), direction, channel_idx, sender_pubkey or "", sender_name or "", text,
-                 hops, path or "", ack_code or ""),
-            )
-            conn.commit()
-            conn.close()
-            return True  # new message
+            with db.connection_context():
+                existing = (
+                    Message.select(Message.id)
+                    .where(
+                        (Message.direction == direction)
+                        & (
+                            (Message.channel_idx == channel_idx)
+                            | (Message.channel_idx.is_null() & (channel_idx is None))
+                        )
+                        & (Message.sender_pubkey == (sender_pubkey or ""))
+                        & (Message.text == text)
+                        & (Message.timestamp > since)
+                    )
+                    .first()
+                )
+                if existing:
+                    return False  # duplicate — skip
+
+                Message.create(
+                    timestamp=time.time(),
+                    direction=direction,
+                    channel_idx=channel_idx,
+                    sender_pubkey=sender_pubkey or "",
+                    sender_name=sender_name or "",
+                    text=text,
+                    hops=hops,
+                    path=path or "",
+                    ack_code=ack_code or "",
+                )
+                return True  # new message
         except Exception as e:
             print(f"[DataStore] Message store error: {e}")
             return True  # on error, assume new so we don't silently drop notifications
@@ -387,19 +449,20 @@ class DataStore:
         if not self._db_path or not ack_code:
             return 0
         try:
-            conn = sqlite3.connect(self._db_path)
-            conn.execute(
-                "UPDATE messages SET acks = acks + 1 "
-                "WHERE ack_code = ? AND direction = 'out'",
-                (ack_code,),
-            )
-            row = conn.execute(
-                "SELECT acks FROM messages WHERE ack_code = ? AND direction = 'out'",
-                (ack_code,),
-            ).fetchone()
-            conn.commit()
-            conn.close()
-            return row[0] if row else 0
+            with db.connection_context():
+                query = Message.update(acks=Message.acks + 1).where(
+                    (Message.ack_code == ack_code) & (Message.direction == "out")
+                )
+                query.execute()
+
+                msg = (
+                    Message.select(Message.acks)
+                    .where(
+                        (Message.ack_code == ack_code) & (Message.direction == "out")
+                    )
+                    .first()
+                )
+                return msg.acks if msg else 0
         except Exception as e:
             print(f"[DataStore] ACK update error: {e}")
             return 0
@@ -410,62 +473,35 @@ class DataStore:
             return []
         since = time.time() - (hours * 3600)
         try:
-            conn = sqlite3.connect(self._db_path)
-            if channel_idx is not None:
-                rows = conn.execute(
-                    "SELECT id, timestamp, direction, channel_idx, sender_pubkey, sender_name, "
-                    "text, hops, path, acks, ack_code "
-                    "FROM messages WHERE timestamp > ? AND channel_idx = ? "
-                    "ORDER BY timestamp DESC LIMIT ?",
-                    (since, channel_idx, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT id, timestamp, direction, channel_idx, sender_pubkey, sender_name, "
-                    "text, hops, path, acks, ack_code "
-                    "FROM messages WHERE timestamp > ? "
-                    "ORDER BY timestamp DESC LIMIT ?",
-                    (since, limit),
-                ).fetchall()
-            conn.close()
-            return [
-                {
-                    "id": row[0],
-                    "ts": row[1],
-                    "direction": row[2],
-                    "channel_idx": row[3],
-                    "sender_pubkey": row[4],
-                    "sender_name": row[5],
-                    "text": row[6],
-                    "hops": row[7] if row[7] is not None else -1,
-                    "path": row[8] or "",
-                    "acks": row[9] or 0,
-                    "ack_code": row[10] or "",
-                }
-                for row in rows
-            ]
+            with db.connection_context():
+                query = Message.select().where(Message.timestamp > since)
+                if channel_idx is not None:
+                    query = query.where(Message.channel_idx == channel_idx)
+                query = query.order_by(Message.timestamp.desc()).limit(limit)
+
+                return list(query.dicts())
         except Exception as e:
             print(f"[DataStore] Message read error: {e}")
             return []
 
-    def upsert_advert_node(self, pubkey: str, name: str, lat: float = None, lon: float = None):
+    def upsert_advert_node(
+        self, pubkey: str, name: str, lat: float = None, lon: float = None
+    ):
         """Upsert a node discovered via advert packet."""
         if not self._db_path or not pubkey or not name:
             return
         try:
-            conn = sqlite3.connect(self._db_path)
-            conn.execute(
-                """INSERT INTO advert_nodes (pubkey, name, lat, lon, last_seen)
-                   VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT(pubkey) DO UPDATE SET
-                     name=excluded.name,
-                     lat=COALESCE(excluded.lat, advert_nodes.lat),
-                     lon=COALESCE(excluded.lon, advert_nodes.lon),
-                     last_seen=excluded.last_seen""",
-                (pubkey, name, lat, lon, time.time())
-            )
-            conn.commit()
-            conn.close()
+            with db.connection_context():
+                AdvertNode.insert(
+                    pubkey=pubkey, name=name, lat=lat, lon=lon, last_seen=time.time()
+                ).on_conflict(
+                    conflict_target=[AdvertNode.pubkey],
+                    preserve=[AdvertNode.name, AdvertNode.last_seen],
+                    update={
+                        "lat": peewee.fn.COALESCE(peewee.EXCLUDED.lat, AdvertNode.lat),
+                        "lon": peewee.fn.COALESCE(peewee.EXCLUDED.lon, AdvertNode.lon),
+                    },
+                ).execute()
         except Exception as e:
             print(f"[DataStore] Advert node upsert error: {e}")
 
@@ -474,12 +510,10 @@ class DataStore:
         if not self._db_path:
             return []
         try:
-            conn = sqlite3.connect(self._db_path)
-            rows = conn.execute(
-                "SELECT pubkey, name, lat, lon, last_seen FROM advert_nodes ORDER BY last_seen DESC"
-            ).fetchall()
-            conn.close()
-            return [{"pubkey": r[0], "name": r[1], "lat": r[2], "lon": r[3], "last_seen": r[4]} for r in rows]
+            with db.connection_context():
+                return list(
+                    AdvertNode.select().order_by(AdvertNode.last_seen.desc()).dicts()
+                )
         except Exception as e:
             print(f"[DataStore] Advert nodes read error: {e}")
             return []
@@ -489,10 +523,9 @@ class DataStore:
         if not self._db_path:
             return {}
         try:
-            conn = sqlite3.connect(self._db_path)
-            rows = conn.execute("SELECT node_id, name FROM node_names").fetchall()
-            conn.close()
-            return {row[0]: row[1] for row in rows}
+            with db.connection_context():
+                query = NodeName.select()
+                return {row.node_id: row.name for row in query}
         except Exception as e:
             print(f"[DataStore] Node names load error: {e}")
             return {}
@@ -503,13 +536,11 @@ class DataStore:
             return
         try:
             now = time.time()
-            conn = sqlite3.connect(self._db_path)
-            conn.executemany(
-                "INSERT OR REPLACE INTO node_names (node_id, name, updated) VALUES (?, ?, ?)",
-                [(node_id, name, now) for node_id, name in cache.items()]
-            )
-            conn.commit()
-            conn.close()
+            with db.connection_context():
+                data = [
+                    {"node_id": k, "name": v, "updated": now} for k, v in cache.items()
+                ]
+                NodeName.insert_many(data).on_conflict_replace().execute()
         except Exception as e:
             print(f"[DataStore] Node names save error: {e}")
 
@@ -519,9 +550,7 @@ class DataStore:
             return
         cutoff = time.time() - (retention_hours * 3600)
         try:
-            conn = sqlite3.connect(self._db_path)
-            conn.execute("DELETE FROM activity_log WHERE timestamp < ?", (cutoff,))
-            conn.commit()
-            conn.close()
+            with db.connection_context():
+                ActivityLog.delete().where(ActivityLog.timestamp < cutoff).execute()
         except Exception as e:
             print(f"[DataStore] Activity log prune error: {e}")

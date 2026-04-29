@@ -676,7 +676,7 @@
           _allMessages = msgs;
           renderMessages(msgs);
           if (msgs.length > 0) {
-            var latest = msgs[0].ts;
+            var latest = msgs[0].timestamp;
             var stored = parseFloat(localStorage.getItem('meshcore_last_msg_seen') || '0');
             if (latest > stored) {
               localStorage.setItem('meshcore_last_msg_seen', latest.toString());
@@ -808,7 +808,7 @@
 
         var timeEl = document.createElement('div');
         timeEl.className = 'msg-time';
-        timeEl.textContent = fmtTime(m.ts);
+        timeEl.textContent = fmtTime(m.timestamp);
         item.appendChild(timeEl);
 
         // Seen-by count for outgoing messages

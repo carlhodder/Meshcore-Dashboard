@@ -62,6 +62,8 @@ Thumbs.db
 
 # Database files (if using SQLite)
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
 
 # Settings file

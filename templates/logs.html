@@ -280,7 +280,7 @@
       var html = '';
       logs.forEach(function(entry) {
         var lvl = (entry.level || '').toLowerCase();
-        var ts = new Date(entry.ts * 1000).toLocaleString([], {
+        var ts = new Date(entry.timestamp * 1000).toLocaleString([], {
           month: 'short', day: 'numeric',
           hour: '2-digit', minute: '2-digit', second: '2-digit'
         });
