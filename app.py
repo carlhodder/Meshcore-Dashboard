@@ -64,6 +64,10 @@ async def lifespan(app: FastAPI):
         await prune_task
     except asyncio.CancelledError:
         pass
+    try:
+        store.close_db()
+    except Exception:
+        pass
     logger.info("MeshCore poller stopped")
 
 
@@ -357,9 +361,11 @@ async def save_settings(request: Request):
     try:
         cfg.validate_and_save(body)
     except ValidationError as e:
-        errors = "; ".join(f"{".".join(err["loc"])}: {err["msg"]}" for err in e.errors())
+        errors = "; ".join(
+            f"{".".join(err["loc"])}: {err["msg"]}" for err in e.errors()
+        )
         return {"ok": False, "error": errors}
-    
+
     logger.info(
         f"Settings saved: {cfg.companion_host}:{cfg.companion_port}, "
         f"{len(cfg.repeaters)} repeaters"

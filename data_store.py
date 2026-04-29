@@ -13,11 +13,12 @@ from peewee import (
     FloatField,
     TextField,
     IntegerField,
-    BooleanField ,
+    BooleanField,
     AutoField,
     SQL,
 )
 from playhouse.migrate import SqliteMigrator, migrate
+from playhouse.shortcuts import model_to_dict
 from playhouse.sqliteq import SqliteQueueDatabase
 
 db = Proxy()
@@ -26,6 +27,7 @@ db = Proxy()
 class BaseDbModel(Model):
     class Meta:
         database = db
+
 
 ###### DEPRECATED ######
 class TelemetryLog(BaseDbModel):
@@ -125,11 +127,12 @@ class RepeaterState(BaseDbModel):
     fw_version = TextField(default="")
     last_seen_epoch = FloatField(default=0)
     last_poll_ok = BooleanField(null=True, default=None)
+    last_poll_timestamp = FloatField(null=False, default=0)
     temperature = FloatField(default=0)
     humidity = FloatField(default=0)
 
     def to_dict(self) -> dict:
-        d = asdict(self)
+        d = model_to_dict(self)
         d["online"] = self.is_online
         d["poll_ok"] = self.last_poll_ok
         d["pubkey_short"] = self.pubkey[:12] if self.pubkey else ""
@@ -170,12 +173,25 @@ class DataStore:
         if self._db_path:
             self._init_db()
 
+    def close_db(self):
+        if self._db_path and not db.is_closed():
+            db.close()
+
     def _init_db(self):
         if db.obj is None:
             db.initialize(SqliteQueueDatabase(self._db_path))
         with db.connection_context():
             db.create_tables(
-                [TelemetryLog, ActivityLog, Measurement, Message, NodeName, RepeaterState, AdvertNode], safe=True
+                [
+                    TelemetryLog,
+                    ActivityLog,
+                    Measurement,
+                    Message,
+                    NodeName,
+                    RepeaterState,
+                    AdvertNode,
+                ],
+                safe=True,
             )
 
             # Preexisting migrations
@@ -227,15 +243,40 @@ class DataStore:
                 except Exception as e:
                     print(f"[DataStore] Migration error: {e}")
                     return
-            
+
             # Check if we need to migrate old measurement data
             if TelemetryLog.select().exists() and not Measurement.select().exists():
                 for log in TelemetryLog.select().iterator():
-                    Measurement.create(timestamp=log.timestamp, pubkey=log.pubkey, measurement_code="battery_mv", measurement_value=log.battery_mv)
-                    Measurement.create(timestamp=log.timestamp, pubkey=log.pubkey, measurement_code="battery_voltage", measurement_value=log.battery_voltage)
-                    Measurement.create(timestamp=log.timestamp, pubkey=log.pubkey, measurement_code="rssi", measurement_value=log.rssi)
-                    Measurement.create(timestamp=log.timestamp, pubkey=log.pubkey, measurement_code="snr", measurement_value=log.snr)
-                    Measurement.create(timestamp=log.timestamp, pubkey=log.pubkey, measurement_code="uptime_seconds", measurement_value=log.uptime_seconds)
+                    Measurement.create(
+                        timestamp=log.timestamp,
+                        pubkey=log.pubkey,
+                        measurement_code="battery_mv",
+                        measurement_value=log.battery_mv,
+                    )
+                    Measurement.create(
+                        timestamp=log.timestamp,
+                        pubkey=log.pubkey,
+                        measurement_code="battery_voltage",
+                        measurement_value=log.battery_voltage,
+                    )
+                    Measurement.create(
+                        timestamp=log.timestamp,
+                        pubkey=log.pubkey,
+                        measurement_code="rssi",
+                        measurement_value=log.rssi,
+                    )
+                    Measurement.create(
+                        timestamp=log.timestamp,
+                        pubkey=log.pubkey,
+                        measurement_code="snr",
+                        measurement_value=log.snr,
+                    )
+                    Measurement.create(
+                        timestamp=log.timestamp,
+                        pubkey=log.pubkey,
+                        measurement_code="uptime_seconds",
+                        measurement_value=log.uptime_seconds,
+                    )
 
     def init_repeaters(self):
         """Register a repeater from config. Called at startup or config save."""
@@ -245,9 +286,13 @@ class DataStore:
                 pubkey = r["pubkey"]
                 name = r["name"]
                 if pubkey not in self._repeaters:
-                    self._repeaters[pubkey] = RepeaterState.get_or_none(RepeaterState.pubkey==pubkey)
+                    self._repeaters[pubkey] = RepeaterState.get_or_none(
+                        RepeaterState.pubkey == pubkey
+                    )
                     if self._repeaters[pubkey] is None:
-                        self._repeaters[pubkey] = RepeaterState(name=name, pubkey=pubkey)
+                        self._repeaters[pubkey] = RepeaterState(
+                            name=name, pubkey=pubkey
+                        )
                 else:
                     # Update name if it changed in settings
                     self._repeaters[pubkey].name = name
@@ -318,6 +363,7 @@ class DataStore:
         with self._lock:
             if pubkey in self._repeaters:
                 self._repeaters[pubkey].last_poll_ok = False
+                self._repeaters[pubkey].last_poll_timestamp = time.time()
                 if self._db_path:
                     self._repeaters[pubkey].save()
 
@@ -335,11 +381,17 @@ class DataStore:
                     if self._db_path and isinstance(v, numbers.Number):
                         try:
                             with db.connection_context():
-                                Measurement.create(timestamp=ts, pubkey=pubkey, measurement_code=k, measurement_value=float(v))
+                                Measurement.create(
+                                    timestamp=ts,
+                                    pubkey=pubkey,
+                                    measurement_code=k,
+                                    measurement_value=float(v),
+                                )
                         except Exception as e:
                             print(f"[DataStore] DB write error: {e}")
             r.last_seen_epoch = ts
             r.last_poll_ok = True
+            r.last_poll_timestamp = ts
 
             if self._db_path:
                 r.save()
@@ -348,6 +400,18 @@ class DataStore:
         """Return all repeater states as a JSON-serializable list."""
         with self._lock:
             return [r.to_dict() for r in self._repeaters.values()]
+
+    def get(self, pubkey):
+        repeater = None
+        for r in self._repeaters:
+            if (
+                r.pubkey == pubkey
+                or pubkey.startswith(r.pubkey)
+                or r.pubkey.startswith(pubkey)
+            ):
+                repeater = r.to_dict()
+                break
+        return repeater
 
     def get_history(self, pubkey: str, hours: int = 24) -> List[dict]:
         """Return historical telemetry for a repeater over the last N hours."""
@@ -359,16 +423,17 @@ class DataStore:
                 query = (
                     Measurement.select()
                     .where(
-                        (Measurement.pubkey == pubkey)
-                        & (Measurement.timestamp > since)
+                        (Measurement.pubkey == pubkey) & (Measurement.timestamp > since)
                     )
                     .order_by(Measurement.timestamp)
                 )
 
                 # Now reformat to what the charter expects
                 output_format = OrderedDict()
-                for meas in query.dicts():
-                    output_format.setdefault(meas.timestamp, {})[meas.measurement_code] = meas.measurement_value
+                for meas in query:
+                    output_format.setdefault(meas.timestamp, {})[
+                        meas.measurement_code
+                    ] = meas.measurement_value
 
                 return [{"timestamp": k, **val} for k, val in output_format.items()]
         except Exception as e:

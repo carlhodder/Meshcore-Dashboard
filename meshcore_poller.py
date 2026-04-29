@@ -202,25 +202,53 @@ class MeshcorePoller:
                 )
                 break
 
-            cycle_start = time.monotonic()
             if self._polling_enabled:
-                await self._poll_all_repeaters(repeaters)
-                await self._fetch_companion_telemetry()
+                await self._refresh_contacts()
+                stagger = self._cfg.stagger_delay_seconds
+                now_ts = time.time()
+                any_polled = False
+
+                for i, repeater_cfg in enumerate(repeaters):
+                    if (
+                        not self._running
+                        or self._needs_reconnect
+                        or self._stay_disconnected
+                    ):
+                        break
+
+                    pubkey = repeater_cfg["pubkey"]
+                    name = repeater_cfg["name"]
+
+                    rep_state = self.store.get(pubkey)
+                    last_poll = rep_state.get("last_poll_timestamp") or 0.0
+
+                    if now_ts < last_poll + poll_interval:
+                        continue
+
+                    any_polled = True
+                    contact = self._find_contact(pubkey)
+
+                    if contact is None:
+                        logger.warning(
+                            f"[{name}] No contact found for pubkey {pubkey[:16]}... "
+                            f"(is the repeater in range?)"
+                        )
+                        if i < len(repeaters) - 1:
+                            await self._interruptible_sleep(stagger)
+                        continue
+
+                    await self._poll_repeater(contact, repeater_cfg)
+
+                    if i < len(repeaters) - 1:
+                        logger.debug(f"Waiting {stagger}s before next repeater")
+                        await self._interruptible_sleep(stagger)
+
+                if any_polled:
+                    await self._fetch_companion_telemetry()
             else:
                 logger.debug("Duty-cycle polling paused — skipping this cycle")
-            elapsed = time.monotonic() - cycle_start
-            remaining = max(0, poll_interval - elapsed)
-            if remaining > 0:
-                logger.info(f"Cycle complete. Next poll in {remaining:.0f}s")
-                # Sleep in small chunks so we can respond to reconnect requests
-                while (
-                    remaining > 0
-                    and self._running
-                    and not self._needs_reconnect
-                    and not self._stay_disconnected
-                ):
-                    await asyncio.sleep(min(remaining, 2))
-                    remaining -= 2
+
+            await self._interruptible_sleep(1)
 
         # Unsubscribe before disconnecting
         self._unsubscribe_messages()
@@ -514,7 +542,10 @@ class MeshcorePoller:
                     if contact_obj is not None:
                         asyncio.ensure_future(
                             self._discover_path(
-                                contact_obj, sender_pubkey, sender_name, configured_contact=False
+                                contact_obj,
+                                sender_pubkey,
+                                sender_name,
+                                configured_contact=False,
                             )
                         )
             if text:
@@ -581,7 +612,7 @@ class MeshcorePoller:
                                 contact_obj,
                                 sender_pubkey,
                                 self._resolve_contact_name(sender_pubkey),
-                                configured_contact=False
+                                configured_contact=False,
                             )
                         )
             if text:
@@ -1272,7 +1303,6 @@ class MeshcorePoller:
         pubkey = repeater_cfg["pubkey"]
         name = repeater_cfg["name"]
 
-        
         # Extract hop count and route path from contact
         # MeshCore library uses out_path_len / out_path (not hops/path)
         # out_path_len: -1 = flood routing, 0 = direct (1 hop), N = N intermediate nodes
@@ -1312,8 +1342,7 @@ class MeshcorePoller:
                     )
                 elif isinstance(raw_path, list) and raw_path:
                     route_path = " > ".join(
-                        f"{b:02x}" if isinstance(b, int) else str(b)
-                        for b in raw_path
+                        f"{b:02x}" if isinstance(b, int) else str(b) for b in raw_path
                     )
         elif hasattr(contact, "out_path_len"):
             opl = contact.out_path_len
@@ -1335,12 +1364,8 @@ class MeshcorePoller:
             if lat != 0.0 or lon != 0.0:
                 self.store.update_location(pubkey, lat, lon)
 
-        route_desc = (
-            route_path if route_path else ("direct" if hops > 0 else "flood")
-        )
-        logger.info(
-            f"[{name}] Polling repeater, hops={hops}, route={route_desc}..."
-        )
+        route_desc = route_path if route_path else ("direct" if hops > 0 else "flood")
+        logger.info(f"[{name}] Polling repeater, hops={hops}, route={route_desc}...")
 
         # Apply custom path if configured, otherwise use flood
         custom_path = repeater_cfg.get("path", "").strip()
@@ -1360,39 +1385,11 @@ class MeshcorePoller:
 
         await self._request_telemetry(pubkey, name, contact)
 
-
-    async def _poll_all_repeaters(self, repeaters: list):
-        """Poll each configured repeater with staggered delays."""
-        await self._refresh_contacts()
-        stagger = self._cfg.stagger_delay_seconds
-
-        for i, repeater_cfg in enumerate(repeaters):
-            if not self._running or self._needs_reconnect or self._stay_disconnected:
-                break
-
-            pubkey = repeater_cfg["pubkey"]
-            name = repeater_cfg["name"]
-            contact = self._find_contact(pubkey)
-            
-            if contact is None:
-                logger.warning(
-                    f"[{name}] No contact found for pubkey {pubkey[:16]}... "
-                    f"(is the repeater in range?)"
-                )
-                if i < len(repeaters) - 1:
-                    await asyncio.sleep(stagger)
-                continue
-
-            self._poll_repeater(repeater_cfg)
-            
-            if i < len(repeaters) - 1:
-                logger.debug(f"Waiting {stagger}s before next repeater")
-                await self._interruptible_sleep(stagger)
-
-
-    async def _discover_path(self, contact, pubkey: str, name: str, configured_contact = True):
+    async def _discover_path(
+        self, contact, pubkey: str, name: str, configured_contact=True
+    ):
         """Run a path discovery request to determine the actual route to a repeater.
-           OR with configured_contact=False to save as a non-configured contact instead."""
+        OR with configured_contact=False to save as a non-configured contact instead."""
         try:
             result = await self.mc.commands.send_path_discovery(contact)
             if result.type == EventType.ERROR:
@@ -1427,7 +1424,7 @@ class MeshcorePoller:
                     self.store.update_route(pubkey, new_hops, disc_route)
                 else:
                     self._contact_routes[pubkey.upper()[:4]] = (new_hops, disc_route)
-                    
+
                 logger.info(
                     f"[{name}] Path discovered: hops={new_hops}, path={disc_route or 'direct'}"
                 )
@@ -1483,7 +1480,11 @@ class MeshcorePoller:
 
             if "time" in status:
                 updates["time"] = float(status["time"])
-                updates["time_offset_seconds"] = round((datetime.fromtimestamp(updates["time"]) - start_time).total_seconds())
+                updates["time_offset_seconds"] = round(
+                    (
+                        datetime.fromtimestamp(updates["time"]) - start_time
+                    ).total_seconds()
+                )
 
             if "bat" in status:
                 updates["battery_mv"] = status["bat"]
@@ -1558,7 +1559,6 @@ class MeshcorePoller:
                     updates["temperature"] = float(value)
                 elif sensor_type == "humidity" and value is not None:
                     updates["humidity"] = float(value)
-                
 
             if updates:
                 self.store.update_repeater(pubkey, **updates)
@@ -1591,7 +1591,7 @@ class MeshcorePoller:
                 break
         if repeater_cfg is None:
             return {"ok": False, "error": "Pubkey does not match any known repeaters"}
-        
+
         name = repeater_cfg.get("name", pubkey[:8])
         start = time.monotonic()
         try:
