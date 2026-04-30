@@ -497,6 +497,8 @@ function connectSSE() {
 var historyChart = null;
 var _currentHistoryPubkey = null;
 var _currentHistoryName = null;
+var _currentHistoryData = null;
+var _currentHistoryItems = null;
 
 function showHistory(pubkey, name) {
   _currentHistoryPubkey = pubkey;
@@ -507,6 +509,11 @@ function showHistory(pubkey, name) {
   // reset to default on new open if desired, or keep current
   modal.classList.add("visible");
   refreshHistory();
+}
+
+function toggleMetricsDropdown() {
+  var d = document.getElementById("metricsDropdown");
+  if (d) d.style.display = d.style.display === "none" ? "flex" : "none";
 }
 
 function refreshHistory() {
@@ -534,152 +541,177 @@ function refreshHistory() {
     .then(function (r) {
       return r.json();
     })
-    .then(function (data) {
-      var container = document.getElementById("historyChartContainer");
-      if (!data || data.length === 0) {
-        if (historyChart) {
-          historyChart.destroy();
-          historyChart = null;
+    .then(function (payload) {
+      // payload = { items: {...}, defaults: [...], data: [...] }
+      var data = payload.data;
+      var items = payload.items;
+      var defaults = payload.defaults;
+
+      _currentHistoryData = data || [];
+      _currentHistoryItems = items;
+
+      // Build dropdown
+      var dd = document.getElementById("metricsDropdown");
+      if (dd) {
+        dd.innerHTML = "";
+        for (var key in items) {
+          if (items.hasOwnProperty(key)) {
+            var label = document.createElement("label");
+            label.style.display = "flex";
+            label.style.alignItems = "center";
+            label.style.gap = "0.5rem";
+            label.style.fontSize = "0.8rem";
+            label.style.color = "#e2e8f0";
+            label.style.cursor = "pointer";
+
+            var cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.value = key;
+            if (defaults.indexOf(key) !== -1) cb.checked = true;
+            cb.addEventListener("change", renderHistoryChart);
+
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(items[key]));
+            dd.appendChild(label);
+          }
         }
-        if (container) {
-          container.innerHTML =
-            '<p style="text-align:center;color:#64748b;padding:2rem;">No history data found for this period.</p>' +
-            '<canvas id="historyChart" height="250" style="display:none;"></canvas>';
-        }
-        return;
       }
 
-      if (container) {
-        container.innerHTML =
-          '<canvas id="historyChart" height="250"></canvas>';
-      }
-
-      var labels = data.map(function (d) {
-        var dt = new Date(d.timestamp * 1000);
-        if (period === "day") {
-          return dt.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-        } else {
-          return (
-            dt.toLocaleDateString([], { month: "short", day: "numeric" }) +
-            " " +
-            dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-          );
-        }
-      });
-
-      var ctx = document.getElementById("historyChart").getContext("2d");
-      if (historyChart) historyChart.destroy();
-
-      // Pre-compute battery % for each point so the tooltip can show both
-      var battPctData = data.map(function (d) {
-        return batteryPercent(d.battery_mv);
-      });
-      var battMvData = data.map(function (d) {
-        return d.battery_mv;
-      });
-      var battVData = data.map(function (d) {
-        return d.battery_v;
-      });
-
-      historyChart = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels: labels,
-          datasets: [
-            {
-              label: "Battery (%)",
-              data: battPctData,
-              borderColor: "#22c55e",
-              backgroundColor: "#22c55e20",
-              yAxisID: "yBatt",
-              tension: 0.3,
-              pointRadius: 1,
-              fill: true,
-            },
-            {
-              label: "RSSI (dBm)",
-              data: data.map(function (d) {
-                return d.rssi;
-              }),
-              borderColor: "#38bdf8",
-              yAxisID: "ySignal",
-              tension: 0.3,
-              pointRadius: 1,
-              fill: false,
-            },
-            {
-              label: "SNR (dB)",
-              data: data.map(function (d) {
-                return d.snr;
-              }),
-              borderColor: "#eab308",
-              yAxisID: "ySignal",
-              tension: 0.3,
-              pointRadius: 1,
-              fill: false,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          interaction: { mode: "index", intersect: false },
-          plugins: {
-            legend: { labels: { color: "#94a3b8" } },
-            tooltip: {
-              callbacks: {
-                label: function (ctx) {
-                  if (ctx.datasetIndex === 0) {
-                    var i = ctx.dataIndex;
-                    var pct = battPctData[i];
-                    var mv = battMvData[i];
-                    var v = battVData[i];
-                    var vStr =
-                      v && v > 0
-                        ? v.toFixed(2) + " V"
-                        : mv > 0
-                          ? (mv / 1000).toFixed(2) + " V"
-                          : "--";
-                    return "Battery: " + pct + "%  (" + vStr + ")";
-                  }
-                  return ctx.dataset.label + ": " + ctx.parsed.y;
-                },
-              },
-            },
-          },
-          scales: {
-            x: {
-              ticks: { color: "#64748b", maxTicksLimit: 12 },
-              grid: { color: "#1e293b" },
-            },
-            yBatt: {
-              position: "left",
-              min: 0,
-              max: 100,
-              title: { display: true, text: "Battery (%)", color: "#94a3b8" },
-              ticks: {
-                color: "#22c55e",
-                callback: function (v) {
-                  return v + "%";
-                },
-              },
-              grid: { color: "#1e293b" },
-            },
-            ySignal: {
-              position: "right",
-              title: { display: true, text: "Signal", color: "#94a3b8" },
-              ticks: { color: "#38bdf8" },
-              grid: { drawOnChartArea: false },
-            },
-          },
-        },
-      });
+      renderHistoryChart();
     })
     .catch(function (err) {
       console.error("History fetch error:", err);
     });
+}
+
+function renderHistoryChart() {
+  var container = document.getElementById("historyChartContainer");
+  var data = _currentHistoryData;
+
+  if (!data || data.length === 0) {
+    if (historyChart) {
+      historyChart.destroy();
+      historyChart = null;
+    }
+    if (container) {
+      container.innerHTML =
+        '<p style="text-align:center;color:#64748b;padding:2rem;">No history data found for this period.</p>' +
+        '<canvas id="historyChart" height="250" style="display:none;"></canvas>';
+    }
+    return;
+  }
+
+  if (container) {
+    container.innerHTML = '<canvas id="historyChart" height="250"></canvas>';
+  }
+
+  var periodSelect = document.getElementById("historyPeriod");
+  var period = periodSelect ? periodSelect.value : "day";
+
+  var labels = data.map(function (d) {
+    var dt = new Date(d.timestamp * 1000);
+    if (period === "day") {
+      return dt.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } else {
+      return (
+        dt.toLocaleDateString([], { month: "short", day: "numeric" }) +
+        " " +
+        dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      );
+    }
+  });
+
+  // Get selected metrics
+  var selectedMetrics = [];
+  var cbs = document.querySelectorAll(
+    "#metricsDropdown input[type=checkbox]:checked",
+  );
+  for (var i = 0; i < cbs.length; i++) {
+    selectedMetrics.push(cbs[i].value);
+  }
+
+  // Build datasets
+  var datasets = [];
+  var colors = [
+    "#22c55e",
+    "#38bdf8",
+    "#eab308",
+    "#ef4444",
+    "#a855f7",
+    "#ec4899",
+    "#f97316",
+    "#14b8a6",
+  ];
+
+  for (var j = 0; j < selectedMetrics.length; j++) {
+    var key = selectedMetrics[j];
+    var name = _currentHistoryItems[key] || key;
+
+    var yData = data.map(function (d) {
+      if (key === "battery_mv") return batteryPercent(d[key]);
+      return d[key] != null ? d[key] : null;
+    });
+
+    var color = colors[j % colors.length];
+    if (key === "battery_mv" || key === "battery_percent") color = "#22c55e";
+    if (key === "rssi") color = "#38bdf8";
+    if (key === "snr") color = "#eab308";
+
+    var isSignal =
+      key.indexOf("rssi") !== -1 ||
+      key.indexOf("snr") !== -1 ||
+      key.indexOf("noise") !== -1;
+
+    datasets.push({
+      label: name,
+      data: yData,
+      borderColor: color,
+      backgroundColor: color + "20",
+      yAxisID: isSignal ? "ySignal" : "yBatt",
+      tension: 0.3,
+      pointRadius: 1,
+      fill: key.indexOf("battery") !== -1,
+    });
+  }
+
+  var ctx = document.getElementById("historyChart").getContext("2d");
+  if (historyChart) historyChart.destroy();
+
+  historyChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: labels,
+      datasets: datasets,
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { labels: { color: "#94a3b8" } },
+      },
+      scales: {
+        x: {
+          ticks: { color: "#64748b", maxTicksLimit: 12 },
+          grid: { color: "#1e293b" },
+        },
+        yBatt: {
+          position: "left",
+          title: { display: false },
+          ticks: { color: "#94a3b8" },
+          grid: { color: "#1e293b" },
+        },
+        ySignal: {
+          position: "right",
+          title: { display: false },
+          ticks: { color: "#94a3b8" },
+          grid: { drawOnChartArea: false },
+        },
+      },
+    },
+  });
 }
 
 function closeHistory() {
@@ -831,6 +863,17 @@ document.addEventListener("click", function (e) {
   }
   if (e.target && e.target.id === "logsModal") {
     closeLogs();
+  }
+
+  var btn = document.getElementById("metricsDropdownBtn");
+  var dd = document.getElementById("metricsDropdown");
+  if (
+    dd &&
+    dd.style.display !== "none" &&
+    e.target !== btn &&
+    !dd.contains(e.target)
+  ) {
+    dd.style.display = "none";
   }
 });
 

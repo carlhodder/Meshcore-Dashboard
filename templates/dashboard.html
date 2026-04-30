@@ -63,6 +63,12 @@
             <option value="year">Year</option>
           </select>
         </div>
+        <div class="logs-filter-group" style="position: relative;">
+          <label>Metrics</label>
+          <button id="metricsDropdownBtn" class="nav-btn" style="padding: 0.4rem 0.5rem; background: #0f172a; border: 1px solid #334155; font-size: 0.8rem;" onclick="toggleMetricsDropdown()">Select Metrics &darr;</button>
+          <div id="metricsDropdown" style="display:none; position:absolute; top: 100%; left: 0; background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 0.5rem; z-index: 10; width: max-content; max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+          </div>
+        </div>
       </div>
       <div id="historyChartContainer">
         <canvas id="historyChart" height="250"></canvas>

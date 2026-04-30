@@ -131,6 +131,23 @@ class RepeaterState(BaseDbModel):
     temperature = FloatField(null=True, default=None)
     humidity = FloatField(null=True, default=None)
 
+    # Labels for metrics. Inclusion in this list will make this data accessible.
+    metric_labels = {
+        "time_offset_seconds": "Clock offset (s)",
+        "battery_voltage": "Battery voltage",
+        "rssi": "RSSI (dBm)",
+        "snr": "SNR (dB)",
+        "noise_floor": "Noise floor (dBm)",
+        "uptime_seconds": "Uptime (s)",
+        "packets_recv": "Packets Rx",
+        "packets_sent": "Packets Tx",
+        "hops": "Hops",
+        "temperature": "Temperature",
+        "humidity": "Humidity",
+    }
+    # Default metrics to show initially
+    default_metrics = ["battery_voltage", "rssi", "snr"]
+
     def to_dict(self) -> dict:
         d = model_to_dict(self)
         d["online"] = self.is_online
@@ -413,7 +430,7 @@ class DataStore:
         return repeater
 
     def get_history(
-        self, pubkey: str, months: int = 0, days: int = 0, hours: int = 24
+        self, pubkey: str, months: int = 0, days: int = 0, hours: int = 0
     ) -> List[dict]:
         """Return historical telemetry for a repeater over the last N hours."""
         if not self._db_path:
@@ -435,15 +452,28 @@ class DataStore:
 
                 # Now reformat to what the charter expects
                 output_format = OrderedDict()
+                data_keys = set()
                 for meas in query:
-                    output_format.setdefault(meas.timestamp, {})[
-                        meas.measurement_code
-                    ] = meas.measurement_value
-
-                return [{"timestamp": k, **val} for k, val in output_format.items()]
+                    if meas.measurement_code in RepeaterState.metric_labels.keys():
+                        data_keys.add(meas.measurement_code)
+                        output_format.setdefault(meas.timestamp, {})[
+                            meas.measurement_code
+                        ] = meas.measurement_value
+                items = {
+                    k: v
+                    for k, v in RepeaterState.metric_labels.items()
+                    if k in data_keys
+                }
+                return {
+                    "items": items,
+                    "defaults": RepeaterState.default_metrics,
+                    "data": [
+                        {"timestamp": k, **val} for k, val in output_format.items()
+                    ],
+                }
         except Exception as e:
             print(f"[DataStore] DB read error: {e}")
-            return []
+            return {"items": {}, "data": []}
 
     def get_log_handler(self) -> logging.Handler:
         """Return a logging handler that writes to the activity_log table."""

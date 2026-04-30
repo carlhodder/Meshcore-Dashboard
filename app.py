@@ -213,7 +213,7 @@ async def set_home_location(request: Request):
 
 
 @app.get("/api/history/{pubkey}")
-async def get_history(pubkey: str, months: int = 0, days: int = 0, hours: int = 24):
+async def get_history(pubkey: str, months: int = 0, days: int = 0, hours: int = 0):
     return store.get_history(pubkey, months, days, hours)
 
 
