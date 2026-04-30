@@ -3,9 +3,9 @@ import logging
 import numbers
 import threading
 from collections import OrderedDict
-from dataclasses import dataclass, asdict
-from datetime import datetime
-from typing import Dict, List, Optional
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+from typing import Dict, List
 import peewee
 from peewee import (
     Proxy,
@@ -413,11 +413,17 @@ class DataStore:
                 break
         return repeater
 
-    def get_history(self, pubkey: str, hours: int = 24) -> List[dict]:
+    def get_history(
+        self, pubkey: str, months: int = 0, days: int = 0, hours: int = 24
+    ) -> List[dict]:
         """Return historical telemetry for a repeater over the last N hours."""
         if not self._db_path:
             return []
-        since = time.time() - (hours * 3600)
+        since = (
+            datetime.now()
+            - relativedelta(months=months)
+            - timedelta(days=days, hours=hours)
+        ).timestamp()
         try:
             with db.connection_context():
                 query = (

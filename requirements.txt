@@ -5,3 +5,4 @@ python-multipart>=0.0.9
 meshcore>=2.2.2
 pydantic>=2.13.3
 peewee>=4.0.5
+python-dateutil>=2.9.0

@@ -53,6 +53,17 @@
         <h2 id="historyTitle">History</h2>
         <button class="modal-close" onclick="closeHistory()">&times;</button>
       </div>
+      <div class="logs-controls" style="margin-bottom: 1rem; border-bottom: none; padding-bottom: 0;">
+        <div class="logs-filter-group">
+          <label for="historyPeriod">Period</label>
+          <select id="historyPeriod" onchange="refreshHistory()">
+            <option value="day" selected>Day</option>
+            <option value="week">Week</option>
+            <option value="month">Month</option>
+            <option value="year">Year</option>
+          </select>
+        </div>
+      </div>
       <canvas id="historyChart" height="250"></canvas>
     </div>
   </div>

@@ -461,16 +461,42 @@ function connectSSE() {
 // --- History Modal ---
 
 var historyChart = null;
+var _currentHistoryPubkey = null;
+var _currentHistoryName = null;
 
 function showHistory(pubkey, name) {
+  _currentHistoryPubkey = pubkey;
+  _currentHistoryName = name;
   var modal = document.getElementById("historyModal");
-  var title = document.getElementById("historyTitle");
-  if (!modal || !title) return;
+  if (!modal) return;
 
-  title.textContent = name + " - 24h History";
+  // reset to default on new open if desired, or keep current
   modal.classList.add("visible");
+  refreshHistory();
+}
 
-  fetch("/api/history/" + encodeURIComponent(pubkey) + "?hours=24")
+function refreshHistory() {
+  if (!_currentHistoryPubkey) return;
+
+  var period = "day";
+  var periodSelect = document.getElementById("historyPeriod");
+  if (periodSelect) period = periodSelect.value;
+
+  var title = document.getElementById("historyTitle");
+  if (title) {
+    var titleSuffix = "24h History";
+    if (period === "week") titleSuffix = "1 Week History";
+    else if (period === "month") titleSuffix = "1 Month History";
+    else if (period === "year") titleSuffix = "1 Year History";
+    title.textContent = _currentHistoryName + " - " + titleSuffix;
+  }
+
+  var qs = "?days=1";
+  if (period === "week") qs = "?days=7";
+  else if (period === "month") qs = "?months=1";
+  else if (period === "year") qs = "?months=12";
+
+  fetch("/api/history/" + encodeURIComponent(_currentHistoryPubkey) + qs)
     .then(function (r) {
       return r.json();
     })
@@ -488,10 +514,19 @@ function showHistory(pubkey, name) {
       }
 
       var labels = data.map(function (d) {
-        return new Date(d.timestamp * 1000).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+        var dt = new Date(d.timestamp * 1000);
+        if (period === "day") {
+          return dt.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        } else {
+          return (
+            dt.toLocaleDateString([], { month: "short", day: "numeric" }) +
+            " " +
+            dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          );
+        }
       });
 
       var ctx = document.getElementById("historyChart").getContext("2d");
