@@ -206,6 +206,10 @@ async def set_home_location(request: Request):
         lon = float(body.get("lon", 0.0))
     except (TypeError, ValueError):
         return {"ok": False, "error": "lat and lon must be numbers"}
+    
+    cfg.home_lat = lat
+    cfg.home_lon = lon
+    cfg.save_settings()
 
     cfg.save()
     logger.info(f"Home location set to {lat:.6f}, {lon:.6f}")

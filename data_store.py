@@ -313,12 +313,15 @@ class DataStore:
                     # Update name if it changed in settings
                     self._repeaters[pubkey].name = name
                     if self._db_path:
-                        self._repeaters[pubkey].save()
+                        self._repeaters[pubkey].save(force_insert=True)
 
     def remove_repeater(self, pubkey: str):
         """Remove a repeater from the live store (when deleted from settings)."""
         with self._lock:
-            self._repeaters.pop(pubkey, None).save()
+            deleted = self._repeaters.pop(pubkey, None)
+            if deleted is not None:
+                deleted.save(force_insert=True)
+
 
     def sync_repeaters(self):
         """Sync store with configured repeater list. Add new, remove stale."""
@@ -327,7 +330,7 @@ class DataStore:
             # Remove repeaters no longer in config
             for pk in list(self._repeaters.keys()):
                 if pk not in configured_keys:
-                    self._repeaters[pk].save()
+                    self._repeaters[pk].save(force_insert=True)
                     del self._repeaters[pk]
         # Add/update configured ones
         self.init_repeaters()
@@ -350,7 +353,7 @@ class DataStore:
                 self._repeaters[pubkey].hops = hops
                 self._repeaters[pubkey].route_path = route_path
                 if self._db_path:
-                    self._repeaters[pubkey].save()
+                    self._repeaters[pubkey].save(force_insert=True)
 
     def get_route_by_prefix(self, pubkey_prefix: str) -> tuple:
         """Return (hops, route_path) for the first repeater whose pubkey starts with the given prefix.
@@ -372,7 +375,7 @@ class DataStore:
                 self._repeaters[pubkey].lat = lat
                 self._repeaters[pubkey].lon = lon
                 if self._db_path:
-                    self._repeaters[pubkey].save()
+                    self._repeaters[pubkey].save(force_insert=True)
 
     def mark_poll_failed(self, pubkey: str):
         """Mark the last poll as failed (status request timed out)."""
@@ -381,7 +384,7 @@ class DataStore:
                 self._repeaters[pubkey].last_poll_ok = False
                 self._repeaters[pubkey].last_poll_timestamp = time.time()
                 if self._db_path:
-                    self._repeaters[pubkey].save()
+                    self._repeaters[pubkey].save(force_insert=True)
 
     def update_repeater(self, pubkey: str, **kwargs):
         """Update a repeater's state with new data from a poll response."""
@@ -410,7 +413,7 @@ class DataStore:
             r.last_poll_timestamp = ts
 
             if self._db_path:
-                r.save()
+                r.save(force_insert=True)
 
     def get_all(self) -> List[dict]:
         """Return all repeater states as a JSON-serializable list."""
@@ -419,7 +422,7 @@ class DataStore:
 
     def get(self, pubkey):
         repeater = None
-        for r in self._repeaters:
+        for r in self._repeaters.values():
             if (
                 r.pubkey == pubkey
                 or pubkey.startswith(r.pubkey)

@@ -150,7 +150,7 @@ class MeshcorePoller:
 
     async def _connect_and_poll(self):
         host = self._cfg.companion_host
-        port = self._cfg.companion_host
+        port = self._cfg.companion_port
         self._current_host = host
         self._current_port = port
         self._needs_reconnect = False
@@ -245,10 +245,10 @@ class MeshcorePoller:
 
                 if any_polled:
                     await self._fetch_companion_telemetry()
+                await self._interruptible_sleep(10)
             else:
                 logger.debug("Duty-cycle polling paused — skipping this cycle")
 
-            await self._interruptible_sleep(1)
 
         # Unsubscribe before disconnecting
         self._unsubscribe_messages()
@@ -1086,7 +1086,7 @@ class MeshcorePoller:
                 if isinstance(key, str)
                 else (key.hex() if isinstance(key, bytes) else str(key))
             )
-            if pk.startswith(pubkey_prefix[:8]) or pubkey_prefix.startswith(pk[:8]):
+            if pk.startswith(pubkey_prefix[:8].upper()) or pubkey_prefix.upper().startswith(pk[:8]):
                 name = contact.get("name", "") if isinstance(contact, dict) else ""
                 return name if name else pubkey_prefix[:8]
         return pubkey_prefix[:8]
@@ -1181,8 +1181,9 @@ class MeshcorePoller:
 
     def _find_contact(self, pubkey: str):
         """Find a contact matching the configured pubkey (full or prefix)."""
-        if pubkey in self._contacts:
-            return self._contacts[pubkey]
+        upper_pubkey = pubkey.upper()
+        if upper_pubkey in self._contacts:
+            return self._contacts[upper_pubkey]
 
         for key, contact in self._contacts.items():
             pk = (
@@ -1190,13 +1191,13 @@ class MeshcorePoller:
                 if isinstance(key, str)
                 else key.hex() if isinstance(key, bytes) else str(key)
             )
-            if pk.startswith(pubkey) or pubkey.startswith(pk):
+            if pk.startswith(upper_pubkey) or upper_pubkey.startswith(pk):
                 return contact
 
             inner_pk = contact.get("public_key", "")
             if isinstance(inner_pk, bytes):
                 inner_pk = inner_pk.hex()
-            if inner_pk.startswith(pubkey) or pubkey.startswith(inner_pk):
+            if inner_pk.startswith(upper_pubkey) or upper_pubkey.startswith(inner_pk):
                 return contact
 
         return None
@@ -1439,14 +1440,9 @@ class MeshcorePoller:
         try:
             if custom_path:
                 # Parse comma-separated hex bytes like "4d,3c,ee"
-                hex_parts = [
-                    p.strip()
-                    for p in custom_path.replace(" ", "").split(",")
-                    if p.strip()
-                ]
-                path_bytes = bytes(int(h, 16) for h in hex_parts)
+                path_bytes = bytes.fromhex(custom_path.replace(" ", "").replace(",", ""))
                 await self.mc.commands.change_contact_path(contact, path_bytes)
-                logger.info(f"[{name}] Set custom path: {' > '.join(hex_parts)}")
+                logger.info(f"[{name}] Set custom path: {custom_path}")
             else:
                 await self.mc.commands.reset_path(pubkey)
                 logger.debug(f"[{name}] Using flood routing")
@@ -1456,7 +1452,7 @@ class MeshcorePoller:
     async def _login_to_repeater(self, contact, name: str, password: str):
         """Login to a repeater so it responds to status/telemetry requests."""
         try:
-            result = await self.mc.commands.send_login(contact, password)
+            result = await self.mc.commands.send_login_sync(contact, password)
             if result.type == EventType.ERROR:
                 logger.warning(f"[{name}] Login failed: {result.payload}")
             else:
