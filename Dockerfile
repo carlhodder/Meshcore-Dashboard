@@ -11,7 +11,6 @@ COPY . .
 
 # Create non-root user and data directory, fix permissions
 RUN useradd -m meshcore \
-    && mkdir -p /app/data \
     && chown -R meshcore:meshcore /app
 
 USER meshcore

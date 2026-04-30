@@ -1156,13 +1156,13 @@ class MeshcorePoller:
 
             contacts = result.payload
             if isinstance(contacts, dict):
-                self._contacts = contacts
+                self._contacts = {k.upper(): v for k,v in contacts.items()}
             elif isinstance(contacts, list):
                 self._contacts = {}
                 for c in contacts:
                     pk = c.get("public_key", "")
                     if pk:
-                        self._contacts[pk] = c
+                        self._contacts[pk.upper()] = c
 
             # Pre-populate node ID → name cache from loaded contacts
             for key, contact in self._contacts.items():
@@ -1453,8 +1453,8 @@ class MeshcorePoller:
         """Login to a repeater so it responds to status/telemetry requests."""
         try:
             result = await self.mc.commands.send_login_sync(contact, password)
-            if result.type == EventType.ERROR:
-                logger.warning(f"[{name}] Login failed: {result.payload}")
+            if result is None:
+                logger.warning(f"[{name}] Login failed")
             else:
                 logger.info(
                     f"[{name}] Login sent (pwd={'default' if password == 'password' else 'custom'})"

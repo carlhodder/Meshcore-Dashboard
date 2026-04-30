@@ -12,7 +12,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-_SETTINGS_FILE = Path(__file__).parent / "settings.json"
+_SETTINGS_FILE = Path(__file__).parent / "data/settings.json"
 
 
 from typing import List, Dict, Any
@@ -98,7 +98,7 @@ class Config(UserConfigurables):
     # Constants:
     # --- History (not editable from web UI) ---
     enable_history: ClassVar[bool] = True
-    history_db: ClassVar[str] = "repeater_history.db"
+    history_db: ClassVar[str] = "data/repeater_history.db"
 
     def _load(self) -> dict:
         """Load settings from settings.json, falling back to defaults."""
