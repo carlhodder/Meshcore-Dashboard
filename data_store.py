@@ -110,31 +110,30 @@ class AdvertNode(BaseDbModel):
 class RepeaterState(BaseDbModel):
     pubkey = TextField(primary_key=True)
     name = TextField(default="")
-    time = FloatField(default=0)
-    time_offset_seconds = IntegerField(default=0)
-    battery_mv = IntegerField(default=0)
-    battery_voltage = FloatField(default=0)
-    rssi = IntegerField(default=0)
-    snr = FloatField(default=0)
-    noise_floor = IntegerField(default=0)
-    uptime_seconds = IntegerField(default=0)
-    packets_recv = IntegerField(default=0)
-    packets_sent = IntegerField(default=0)
-    hops = IntegerField(default=0)
+    time = FloatField(null=True, default=None)
+    time_offset_seconds = IntegerField(null=True, default=None)
+    battery_mv = IntegerField(null=True, default=None)
+    battery_voltage = FloatField(null=True, default=None)
+    rssi = IntegerField(null=True, default=None)
+    snr = FloatField(null=True, default=None)
+    noise_floor = IntegerField(null=True, default=None)
+    uptime_seconds = IntegerField(null=True, default=None)
+    packets_recv = IntegerField(null=True, default=None)
+    packets_sent = IntegerField(null=True, default=None)
+    hops = IntegerField(null=False, default=0)
     route_path = TextField(default="")
-    lat = FloatField(default=0)
-    lon = FloatField(default=0)
+    lat = FloatField(null=True, default=None)
+    lon = FloatField(null=True, default=None)
     fw_version = TextField(default="")
     last_seen_epoch = FloatField(default=0)
     last_poll_ok = BooleanField(null=True, default=None)
     last_poll_timestamp = FloatField(null=False, default=0)
-    temperature = FloatField(default=0)
-    humidity = FloatField(default=0)
+    temperature = FloatField(null=True, default=None)
+    humidity = FloatField(null=True, default=None)
 
     def to_dict(self) -> dict:
         d = model_to_dict(self)
         d["online"] = self.is_online
-        d["poll_ok"] = self.last_poll_ok
         d["pubkey_short"] = self.pubkey[:12] if self.pubkey else ""
         return d
 

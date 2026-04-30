@@ -365,8 +365,8 @@
   }
 
   function markerColor(r) {
-    if (r.poll_ok === true) return '#4ade80';
-    if (r.poll_ok === false) return '#f87171';
+    if (r.last_poll_ok === true) return '#4ade80';
+    if (r.last_poll_ok === false) return '#f87171';
     // Never polled — if we have a recent last_seen, still show as online
     var recentSec = 3600;  // 1 hour
     if (r.last_seen_epoch && (Date.now() / 1000 - r.last_seen_epoch) < recentSec) return '#4ade80';
@@ -398,8 +398,8 @@
   function popupHtml(r) {
     var pct = battPct(r.battery_mv);
     var battStr = pct !== null ? pct + '% (' + (r.battery_mv / 1000).toFixed(2) + 'V)' : '—';
-    var statusCls = r.poll_ok === true ? 'popup-online' : (r.poll_ok === null || r.poll_ok === undefined ? 'popup-unknown' : 'popup-offline');
-    var statusStr = r.poll_ok === true ? 'Online' : (r.poll_ok === null || r.poll_ok === undefined ? 'Not polled' : 'Offline');
+    var statusCls = r.last_poll_ok === true ? 'popup-online' : (r.last_poll_ok === null || r.last_poll_ok === undefined ? 'popup-unknown' : 'popup-offline');
+    var statusStr = r.last_poll_ok === true ? 'Online' : (r.last_poll_ok === null || r.last_poll_ok === undefined ? 'Not polled' : 'Offline');
     var lastSeen = r.last_seen_epoch ? new Date(r.last_seen_epoch * 1000).toLocaleTimeString() : '—';
     var fw = r.fw_version || '—';
     var hopsStr = r.last_seen_epoch ? (r.hops === 0 ? 'Direct' : r.hops + ' hop' + (r.hops !== 1 ? 's' : '')) : '—';

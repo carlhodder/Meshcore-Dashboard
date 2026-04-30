@@ -12,6 +12,7 @@ function batteryClass(mv) {
 }
 
 function batteryColor(mv) {
+  if (mv == null) return "#FFFFFF";
   if (mv >= 3800) return "#22c55e";
   if (mv >= 3500) return "#eab308";
   return "#ef4444";
@@ -26,7 +27,7 @@ function batteryPercent(mv) {
 }
 
 function signalClass(rssi) {
-  if (rssi === 0) return "";
+  if (rssi == null) return "";
   if (rssi > -90) return "signal-good";
   if (rssi > -110) return "signal-mid";
   return "signal-bad";
@@ -127,9 +128,9 @@ function renderRepeaters(rawData) {
     var sClass = signalClass(r.rssi);
     // Status dot: green=poll ok, red=poll failed, grey=never polled
     var dotClass =
-      r.poll_ok === true
+      r.last_poll_ok === true
         ? "online"
-        : r.poll_ok === false
+        : r.last_poll_ok === false
           ? "offline"
           : "unknown";
     var isLowBat = r.battery_mv > 0 && bPct <= lowBatPct;
@@ -173,7 +174,7 @@ function renderRepeaters(rawData) {
       : "";
 
     // Offline: only when poll explicitly failed (not just stale timeout)
-    var isOffline = r.poll_ok === false;
+    var isOffline = r.last_poll_ok === false;
 
     card.innerHTML =
       warningHtml +
@@ -196,11 +197,11 @@ function renderRepeaters(rawData) {
       '<div class="metric-value ' +
       bClass +
       '">' +
-      (r.battery_mv > 0 ? bPct : "--") +
+      (r.battery_mv != null ? bPct : "--") +
       '<span class="metric-unit"> %</span>' +
       "</div>" +
       '<div class="metric-sub">' +
-      (r.battery_voltage > 0 ? r.battery_voltage.toFixed(2) + " V" : "--") +
+      (r.battery_voltage != null ? r.battery_voltage.toFixed(2) + " V" : "--") +
       "</div>" +
       '<div class="bar-bg">' +
       '<div class="bar-fill" style="width:' +
@@ -215,21 +216,21 @@ function renderRepeaters(rawData) {
       '<div class="metric-value ' +
       sClass +
       '">' +
-      (r.rssi !== 0 ? r.rssi : "--") +
+      (r.rssi != null ? r.rssi : "--") +
       '<span class="metric-unit"> dBm</span>' +
       "</div>" +
       "</div>" +
       '<div class="metric">' +
       '<div class="metric-label">SNR</div>' +
       '<div class="metric-value">' +
-      (r.snr !== 0 ? r.snr.toFixed(1) : "--") +
+      (r.snr != null ? r.snr.toFixed(1) : "--") +
       '<span class="metric-unit"> dB</span>' +
       "</div>" +
       "</div>" +
       '<div class="metric">' +
       '<div class="metric-label">Noise Floor</div>' +
       '<div class="metric-value">' +
-      (r.noise_floor !== 0 ? r.noise_floor : "--") +
+      (r.noise_floor != null ? r.noise_floor : "--") +
       '<span class="metric-unit"> dBm</span>' +
       "</div>" +
       "</div>" +
@@ -245,6 +246,34 @@ function renderRepeaters(rawData) {
       hopsLabel +
       "</div>" +
       "</div>" +
+      (r.temperature != null
+        ? '<div class="metric">' +
+          '<div class="metric-label">Temp</div>' +
+          '<div class="metric-value">' +
+          r.temperature.toFixed(1) +
+          '<span class="metric-unit"> °C</span>' +
+          "</div>" +
+          "</div>"
+        : "") +
+      (r.humidity != null
+        ? '<div class="metric">' +
+          '<div class="metric-label">Humidity</div>' +
+          '<div class="metric-value">' +
+          r.humidity.toFixed(1) +
+          '<span class="metric-unit"> %</span>' +
+          "</div>" +
+          "</div>"
+        : "") +
+      (r.time_offset_seconds != null && Math.abs(r.time_offset_seconds) > 30
+        ? '<div class="metric">' +
+          '<div class="metric-label">Time Error</div>' +
+          '<div class="metric-value" style="color: #ef4444">' +
+          (r.time_offset_seconds > 0 ? "+" : "") +
+          r.time_offset_seconds +
+          '<span class="metric-unit"> s</span>' +
+          "</div>" +
+          "</div>"
+        : "") +
       "</div>" +
       '<div class="card-footer">' +
       '<div class="card-footer-left">' +
@@ -253,6 +282,11 @@ function renderRepeaters(rawData) {
       "</div>" +
       (routeChain
         ? '<div class="card-footer-route">' + escapeHtml(routeChain) + "</div>"
+        : "") +
+      (r.fw_version
+        ? '<div class="card-footer-fw" style="color:#64748b;font-size:0.75rem;margin-top:0.15rem;">' +
+          escapeHtml(r.fw_version) +
+          "</div>"
         : "") +
       (isOffline
         ? '<div class="card-offline-text">No response to last poll</div>'
@@ -501,16 +535,23 @@ function refreshHistory() {
       return r.json();
     })
     .then(function (data) {
+      var container = document.getElementById("historyChartContainer");
       if (!data || data.length === 0) {
-        var ctx = document.getElementById("historyChart");
         if (historyChart) {
           historyChart.destroy();
           historyChart = null;
         }
-        ctx.parentElement.innerHTML =
-          '<p style="text-align:center;color:#64748b;padding:2rem;">No history data yet. Data will appear after a few poll cycles.</p>' +
-          '<canvas id="historyChart" height="250"></canvas>';
+        if (container) {
+          container.innerHTML =
+            '<p style="text-align:center;color:#64748b;padding:2rem;">No history data found for this period.</p>' +
+            '<canvas id="historyChart" height="250" style="display:none;"></canvas>';
+        }
         return;
+      }
+
+      if (container) {
+        container.innerHTML =
+          '<canvas id="historyChart" height="250"></canvas>';
       }
 
       var labels = data.map(function (d) {

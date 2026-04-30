@@ -2,10 +2,15 @@
    MeshCore Repeater Dashboard - Styles
    ============================================================ */
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: #0f172a;
   color: #e2e8f0;
   min-height: 100vh;
@@ -97,9 +102,16 @@ header .subtitle {
   vertical-align: middle;
 }
 
-.status-dot.online  { background: #22c55e; box-shadow: 0 0 6px #22c55e80; }
-.status-dot.offline { background: #ef4444; }
-.status-dot.unknown { background: #64748b; }
+.status-dot.online {
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e80;
+}
+.status-dot.offline {
+  background: #ef4444;
+}
+.status-dot.unknown {
+  background: #64748b;
+}
 
 /* --- Card Grid --- */
 
@@ -118,8 +130,12 @@ header .subtitle {
   border-radius: 12px;
   padding: 1.25rem;
   border: 1px solid #334155;
-  transition: border-color 0.3s, transform 0.2s;
+  transition:
+    border-color 0.3s,
+    transform 0.2s;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
 }
 
 .card:hover {
@@ -170,6 +186,7 @@ header .subtitle {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 0.75rem;
+  margin-bottom: auto;
 }
 
 .metric {
@@ -207,13 +224,25 @@ header .subtitle {
 
 /* --- Color Classes --- */
 
-.battery-good { color: #22c55e; }
-.battery-mid  { color: #eab308; }
-.battery-low  { color: #ef4444; }
+.battery-good {
+  color: #22c55e;
+}
+.battery-mid {
+  color: #eab308;
+}
+.battery-low {
+  color: #ef4444;
+}
 
-.signal-good { color: #22c55e; }
-.signal-mid  { color: #eab308; }
-.signal-bad  { color: #ef4444; }
+.signal-good {
+  color: #22c55e;
+}
+.signal-mid {
+  color: #eab308;
+}
+.signal-bad {
+  color: #ef4444;
+}
 
 /* --- Battery Bar --- */
 
@@ -267,7 +296,7 @@ header .subtitle {
   align-items: center;
   justify-content: space-between;
   gap: 0.4rem;
-  margin-top: 0.75rem;
+  margin-top: 1rem;
   padding-top: 0.75rem;
   border-top: 1px solid #334155;
   font-size: 0.75rem;
@@ -330,7 +359,9 @@ header .subtitle {
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
   line-height: 1.4;
-  transition: color 0.2s, border-color 0.2s;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
 }
 
 .card-move-btn:hover:not(:disabled) {
@@ -356,12 +387,25 @@ header .subtitle {
   line-height: 1.4;
   min-width: 2.5rem;
   text-align: center;
-  transition: color 0.2s, border-color 0.2s;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
 }
-.card-advert-btn:hover:not(:disabled) { color: #fb923c; border-color: #f97316; }
-.card-advert-btn:disabled { cursor: default; }
-.card-advert-btn.advert-ok   { border-color: #22c55e; color: #22c55e; }
-.card-advert-btn.advert-fail { border-color: #ef4444; color: #ef4444; }
+.card-advert-btn:hover:not(:disabled) {
+  color: #fb923c;
+  border-color: #f97316;
+}
+.card-advert-btn:disabled {
+  cursor: default;
+}
+.card-advert-btn.advert-ok {
+  border-color: #22c55e;
+  color: #22c55e;
+}
+.card-advert-btn.advert-fail {
+  border-color: #ef4444;
+  color: #ef4444;
+}
 
 .card-ping-btn {
   flex-shrink: 0;
@@ -376,7 +420,9 @@ header .subtitle {
   line-height: 1.4;
   min-width: 2.5rem;
   text-align: center;
-  transition: color 0.2s, border-color 0.2s;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
 }
 
 .card-ping-btn:hover:not(:disabled) {
@@ -384,16 +430,27 @@ header .subtitle {
   border-color: #38bdf8;
 }
 
-.card-ping-btn:disabled { cursor: default; }
+.card-ping-btn:disabled {
+  cursor: default;
+}
 
-.card-ping-btn.ping-ok   { border-color: #22c55e; color: #22c55e; }
-.card-ping-btn.ping-fail { border-color: #ef4444; color: #ef4444; }
+.card-ping-btn.ping-ok {
+  border-color: #22c55e;
+  color: #22c55e;
+}
+.card-ping-btn.ping-fail {
+  border-color: #ef4444;
+  color: #ef4444;
+}
 
 /* --- History Modal --- */
 
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: rgba(0, 0, 0, 0.75);
   display: flex;
   align-items: center;
@@ -466,7 +523,9 @@ header .subtitle {
   text-decoration: none;
   font-family: inherit;
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
   white-space: nowrap;
   position: relative;
 }
@@ -591,7 +650,9 @@ header .subtitle {
   padding: 0.4rem 0.6rem;
   border-radius: 6px;
   line-height: 1;
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
   margin-bottom: 0;
   align-self: end;
 }
@@ -636,8 +697,12 @@ header .subtitle {
   flex-wrap: wrap;
 }
 
-.update-result.err { color: #ef4444; }
-.update-ok { color: #22c55e; }
+.update-result.err {
+  color: #ef4444;
+}
+.update-ok {
+  color: #22c55e;
+}
 
 /* --- Buttons --- */
 
@@ -648,7 +713,9 @@ header .subtitle {
   font-size: 0.85rem;
   font-family: inherit;
   cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
+  transition:
+    background 0.2s,
+    opacity 0.2s;
 }
 
 .btn-primary {
@@ -681,7 +748,9 @@ header .subtitle {
   cursor: pointer;
   font-size: 0.8rem;
   font-family: inherit;
-  transition: border-color 0.2s, color 0.2s;
+  transition:
+    border-color 0.2s,
+    color 0.2s;
 }
 
 .btn-add:hover {
@@ -704,8 +773,12 @@ header .subtitle {
   font-size: 0.8rem;
 }
 
-.settings-status.success { color: #22c55e; }
-.settings-status.error   { color: #ef4444; }
+.settings-status.success {
+  color: #22c55e;
+}
+.settings-status.error {
+  color: #ef4444;
+}
 
 /* --- No Data State --- */
 
@@ -735,7 +808,9 @@ header .subtitle {
   font-family: inherit;
   text-decoration: none;
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
   white-space: nowrap;
   position: relative;
 }
@@ -907,16 +982,30 @@ header .subtitle {
   word-break: break-word;
 }
 
-.log-row.log-error { background: #ef444415; }
-.log-row.log-error .log-level { color: #ef4444; }
+.log-row.log-error {
+  background: #ef444415;
+}
+.log-row.log-error .log-level {
+  color: #ef4444;
+}
 
-.log-row.log-warning { background: #eab30810; }
-.log-row.log-warning .log-level { color: #eab308; }
+.log-row.log-warning {
+  background: #eab30810;
+}
+.log-row.log-warning .log-level {
+  color: #eab308;
+}
 
-.log-row.log-info .log-level { color: #38bdf8; }
+.log-row.log-info .log-level {
+  color: #38bdf8;
+}
 
-.log-row.log-debug { opacity: 0.6; }
-.log-row.log-debug .log-level { color: #64748b; }
+.log-row.log-debug {
+  opacity: 0.6;
+}
+.log-row.log-debug .log-level {
+  color: #64748b;
+}
 
 .logs-empty {
   text-align: center;
@@ -928,7 +1017,6 @@ header .subtitle {
 
 /* ---- Mobile (phones, ≤ 640 px) ---- */
 @media (max-width: 640px) {
-
   body {
     padding: 0;
   }
@@ -976,7 +1064,7 @@ header .subtitle {
   }
 
   .nav-btn.nav-settings {
-    flex: 0 0 auto;          /* gear icon keeps auto width */
+    flex: 0 0 auto; /* gear icon keeps auto width */
     padding: 0.5rem 0.9rem;
     font-size: 1rem;
   }
@@ -1013,9 +1101,8 @@ header .subtitle {
 
 /* ---- Desktop (≥ 900 px) ---- */
 @media (min-width: 900px) {
-
   header {
-    flex-wrap: nowrap;          /* never wrap — single line */
+    flex-wrap: nowrap; /* never wrap — single line */
   }
 
   .header-title {
@@ -1023,8 +1110,8 @@ header .subtitle {
   }
 
   .header-status {
-    flex: 1;                    /* take remaining space */
-    justify-content: center;    /* centre status between title and nav */
+    flex: 1; /* take remaining space */
+    justify-content: center; /* centre status between title and nav */
   }
 
   .nav-group {
