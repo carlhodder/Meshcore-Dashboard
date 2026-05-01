@@ -85,6 +85,327 @@ function buildRouteChain(r, prefixToName) {
 
 // --- Render Dashboard ---
 
+function updateCardElement(card, r, prefixToName, now, lowBatPct) {
+  var bPct = batteryPercent(r.battery_mv);
+  var bClass = batteryClass(r.battery_mv);
+  var sClass = signalClass(r.rssi);
+  var dotClass =
+    r.last_poll_ok === true
+      ? "online"
+      : r.last_poll_ok === false
+        ? "offline"
+        : "unknown";
+  var isLowBat = r.battery_mv > 0 && bPct <= lowBatPct;
+  var isOffline = r.last_poll_ok === false;
+
+  var hopsSeen = r.last_seen_epoch > 0;
+  var hopsLabel = !hopsSeen
+    ? "--"
+    : r.hops === 0
+      ? "Direct"
+      : r.hops + " hop" + (r.hops !== 1 ? "s" : "");
+  var routeChain = buildRouteChain(r, prefixToName);
+
+  // Status dot
+  var dotEl = card.querySelector(".status-dot");
+  if (dotEl) dotEl.className = "status-dot " + dotClass;
+
+  // Name and ID
+  var nameEl = card.querySelector(".card-name");
+  if (nameEl) nameEl.textContent = r.name;
+  var idEl = card.querySelector(".card-id");
+  if (idEl) idEl.textContent = r.pubkey_short || r.pubkey.substring(0, 12);
+
+  // Battery warning
+  var warningEl = card.querySelector(".battery-warning-container");
+  if (warningEl) {
+    if (isLowBat) {
+      warningEl.innerHTML =
+        '<div class="battery-warning">LOW BATTERY - ' + bPct + "%</div>";
+    } else {
+      warningEl.innerHTML = "";
+    }
+  }
+
+  // Metrics
+  var battValEl = card.querySelector(".val-battery");
+  if (battValEl) {
+    battValEl.className = "metric-value val-battery " + bClass;
+    battValEl.innerHTML =
+      (r.battery_mv != null ? bPct : "--") +
+      '<span class="metric-unit"> %</span>';
+  }
+  var battSubEl = card.querySelector(".sub-battery");
+  if (battSubEl)
+    battSubEl.textContent =
+      r.battery_voltage != null ? r.battery_voltage.toFixed(2) + " V" : "--";
+  var battFillEl = card.querySelector(".bar-fill");
+  if (battFillEl) {
+    battFillEl.style.width = bPct + "%";
+    battFillEl.style.background = batteryColor(r.battery_mv);
+  }
+
+  var rssiValEl = card.querySelector(".val-rssi");
+  if (rssiValEl) {
+    rssiValEl.className = "metric-value val-rssi " + sClass;
+    rssiValEl.innerHTML =
+      (r.rssi != null ? r.rssi : "--") +
+      '<span class="metric-unit"> dBm</span>';
+  }
+
+  var snrValEl = card.querySelector(".val-snr");
+  if (snrValEl) {
+    snrValEl.innerHTML =
+      (r.snr != null ? r.snr.toFixed(1) : "--") +
+      '<span class="metric-unit"> dB</span>';
+  }
+
+  var noiseValEl = card.querySelector(".val-noise");
+  if (noiseValEl) {
+    noiseValEl.innerHTML =
+      (r.noise_floor != null ? r.noise_floor : "--") +
+      '<span class="metric-unit"> dBm</span>';
+  }
+
+  var uptimeValEl = card.querySelector(".val-uptime");
+  if (uptimeValEl) {
+    uptimeValEl.textContent = formatUptime(r.uptime_seconds);
+  }
+
+  var hopsValEl = card.querySelector(".val-hops");
+  if (hopsValEl) {
+    hopsValEl.textContent = hopsLabel;
+  }
+
+  var tempValEl = card.querySelector(".val-temp");
+  if (tempValEl) {
+    if (r.temperature != null) {
+      tempValEl.innerHTML =
+        r.temperature.toFixed(1) + '<span class="metric-unit"> °C</span>';
+      tempValEl.parentElement.style.display = "";
+    } else {
+      tempValEl.parentElement.style.display = "none";
+    }
+  }
+
+  var humValEl = card.querySelector(".val-humidity");
+  if (humValEl) {
+    if (r.humidity != null) {
+      humValEl.innerHTML =
+        r.humidity.toFixed(1) + '<span class="metric-unit"> %</span>';
+      humValEl.parentElement.style.display = "";
+    } else {
+      humValEl.parentElement.style.display = "none";
+    }
+  }
+
+  var timeErrValEl = card.querySelector(".val-time-error");
+  if (timeErrValEl) {
+    if (r.time_offset_seconds != null && Math.abs(r.time_offset_seconds) > 30) {
+      timeErrValEl.innerHTML =
+        (r.time_offset_seconds > 0 ? "+" : "") +
+        r.time_offset_seconds +
+        '<span class="metric-unit"> s</span>';
+      timeErrValEl.parentElement.style.display = "";
+    } else {
+      timeErrValEl.parentElement.style.display = "none";
+    }
+  }
+
+  // Footer
+  var seenEl = card.querySelector(".card-footer-seen");
+  if (seenEl) seenEl.textContent = "Last seen: " + timeAgo(r.last_seen_epoch);
+
+  var routeElContainer = card.querySelector(".card-footer-route-container");
+  if (routeElContainer) {
+    if (routeChain) {
+      routeElContainer.innerHTML =
+        '<div class="card-footer-route">' + escapeHtml(routeChain) + "</div>";
+    } else {
+      routeElContainer.innerHTML = "";
+    }
+  }
+
+  var fwElContainer = card.querySelector(".card-footer-fw-container");
+  if (fwElContainer) {
+    if (r.fw_version) {
+      fwElContainer.innerHTML =
+        '<div class="card-footer-fw" style="color:#64748b;font-size:0.75rem;margin-top:0.15rem;">' +
+        escapeHtml(r.fw_version) +
+        "</div>";
+    } else {
+      fwElContainer.innerHTML = "";
+    }
+  }
+
+  var offlineElContainer = card.querySelector(".card-offline-text-container");
+  if (offlineElContainer) {
+    if (isOffline) {
+      offlineElContainer.innerHTML =
+        '<div class="card-offline-text">No response to last poll</div>';
+    } else {
+      offlineElContainer.innerHTML = "";
+    }
+  }
+
+  // Only update ping button if no timer is active
+  var pingBtn = card.querySelector('[data-action="ping"]');
+  if (pingBtn && !window._pingTimers[r.pubkey]) {
+    var cooldown = window._pingCooldowns[r.pubkey] || 0;
+    var pingRemaining = Math.max(0, Math.ceil(cooldown - now));
+    var pingDisabled = pingRemaining > 0;
+    var pingResult = window._pingResults[r.pubkey];
+    var pingLabel = pingRemaining > 0 ? pingRemaining + "s" : "Poll";
+    var pingClass = "card-ping-btn";
+    if (pingRemaining > 0 && pingResult) {
+      pingClass += pingResult.ok ? " ping-ok" : " ping-fail";
+    }
+    pingBtn.className = pingClass;
+    pingBtn.textContent = pingLabel;
+    pingBtn.disabled = pingDisabled;
+  }
+}
+
+function createCardElement(r, prefixToName, now, lowBatPct) {
+  var card = document.createElement("div");
+  card.className = "card";
+  card.setAttribute("data-pubkey", r.pubkey);
+
+  card.innerHTML =
+    '<div class="battery-warning-container"></div>' +
+    '<div class="card-header">' +
+    "<div>" +
+    '<div class="card-name"></div>' +
+    '<div class="card-id"></div>' +
+    "</div>" +
+    '<span class="status-dot"></span>' +
+    "</div>" +
+    '<div class="metrics">' +
+    '<div class="metric">' +
+    '<div class="metric-label">Battery</div>' +
+    '<div class="metric-value val-battery"></div>' +
+    '<div class="metric-sub sub-battery"></div>' +
+    '<div class="bar-bg">' +
+    '<div class="bar-fill"></div>' +
+    "</div>" +
+    "</div>" +
+    '<div class="metric">' +
+    '<div class="metric-label">RSSI</div>' +
+    '<div class="metric-value val-rssi"></div>' +
+    "</div>" +
+    '<div class="metric">' +
+    '<div class="metric-label">SNR</div>' +
+    '<div class="metric-value val-snr"></div>' +
+    "</div>" +
+    '<div class="metric">' +
+    '<div class="metric-label">Noise Floor</div>' +
+    '<div class="metric-value val-noise"></div>' +
+    "</div>" +
+    '<div class="metric">' +
+    '<div class="metric-label">Uptime</div>' +
+    '<div class="metric-value val-uptime"></div>' +
+    "</div>" +
+    '<div class="metric">' +
+    '<div class="metric-label">Hops</div>' +
+    '<div class="metric-value val-hops"></div>' +
+    "</div>" +
+    '<div class="metric" style="display:none;">' +
+    '<div class="metric-label">Temp</div>' +
+    '<div class="metric-value val-temp"></div>' +
+    "</div>" +
+    '<div class="metric" style="display:none;">' +
+    '<div class="metric-label">Humidity</div>' +
+    '<div class="metric-value val-humidity"></div>' +
+    "</div>" +
+    '<div class="metric" style="display:none;">' +
+    '<div class="metric-label">Time Error</div>' +
+    '<div class="metric-value val-time-error" style="color: #ef4444"></div>' +
+    "</div>" +
+    "</div>" +
+    '<div class="card-footer">' +
+    '<div class="card-footer-left">' +
+    '<div class="card-footer-seen"></div>' +
+    '<div class="card-footer-route-container"></div>' +
+    '<div class="card-footer-fw-container"></div>' +
+    '<div class="card-offline-text-container"></div>' +
+    "</div>" +
+    '<div style="display:flex; gap:0.5rem; align-items:center;">' +
+    '<button class="card-ping-btn" data-action="ping">Poll</button>' +
+    '<div class="menu-container">' +
+    '<button class="hamburger-btn" data-action="menu">&#8942;</button>' +
+    '<div class="popup-menu" style="display:none;">' +
+    '<button data-action="advert">Advert</button>' +
+    '<button data-action="set_clock">Set clock</button>' +
+    "</div>" +
+    "</div>" +
+    "</div>" +
+    "</div>";
+
+  // Card click → history (ignore button clicks)
+  card.addEventListener("click", function (e) {
+    if (e.target.tagName === "BUTTON" || e.target.closest(".popup-menu"))
+      return;
+    showHistory(r.pubkey, r.name);
+  });
+
+  card
+    .querySelector('[data-action="menu"]')
+    .addEventListener("click", function (e) {
+      e.stopPropagation();
+      // Close all other menus first
+      document.querySelectorAll(".popup-menu").forEach(function (m) {
+        if (m !== e.currentTarget.nextElementSibling) {
+          m.style.display = "none";
+        }
+      });
+
+      var menu = e.currentTarget.nextElementSibling;
+      var isHidden = menu.style.display === "none";
+
+      if (isHidden) {
+        menu.style.display = "block";
+
+        // Position upwards if it would go off bottom of screen
+        var rect = menu.getBoundingClientRect();
+        if (rect.bottom > window.innerHeight) {
+          menu.style.top = "auto";
+          menu.style.bottom = "100%";
+        } else {
+          menu.style.top = "100%";
+          menu.style.bottom = "auto";
+        }
+      } else {
+        menu.style.display = "none";
+      }
+    });
+
+  card
+    .querySelector('[data-action="advert"]')
+    .addEventListener("click", function (e) {
+      e.stopPropagation();
+      e.currentTarget.closest(".popup-menu").style.display = "none";
+      sendAdvert(r.pubkey, e.currentTarget);
+    });
+
+  card
+    .querySelector('[data-action="set_clock"]')
+    .addEventListener("click", function (e) {
+      e.stopPropagation();
+      e.currentTarget.closest(".popup-menu").style.display = "none";
+      setClock(r.pubkey, e.currentTarget);
+    });
+
+  card
+    .querySelector('[data-action="ping"]')
+    .addEventListener("click", function (e) {
+      e.stopPropagation();
+      pingRepeater(r.pubkey, e.currentTarget);
+    });
+
+  updateCardElement(card, r, prefixToName, now, lowBatPct);
+  return card;
+}
+
 function renderRepeaters(rawData) {
   var grid = document.getElementById("repeaterGrid");
   if (!grid) return;
@@ -96,6 +417,12 @@ function renderRepeaters(rawData) {
       "<p>The poller is connecting to your companion device and requesting repeater status.</p>" +
       "</div>";
     return;
+  }
+
+  // Remove the "Waiting for data" message if it exists
+  var noDataMsg = grid.querySelector(".no-data");
+  if (noDataMsg) {
+    grid.innerHTML = "";
   }
 
   // Apply user-defined card order
@@ -111,8 +438,6 @@ function renderRepeaters(rawData) {
   }
   window._currentData = data;
 
-  grid.innerHTML = "";
-
   // Build pubkey prefix (first byte = 2 hex chars) -> name map for route resolution
   var prefixToName = {};
   data.forEach(function (rep) {
@@ -122,212 +447,30 @@ function renderRepeaters(rawData) {
   var lowBatPct = window._lowBatteryPercent || 20;
   var now = Date.now() / 1000;
 
+  // Track existing pubkeys to remove deleted cards
+  var existingPubkeys = new Set(
+    data.map(function (r) {
+      return r.pubkey;
+    }),
+  );
+
+  // Remove cards that are no longer in the data
+  var currentCards = grid.querySelectorAll(".card");
+  currentCards.forEach(function (card) {
+    if (!existingPubkeys.has(card.getAttribute("data-pubkey"))) {
+      grid.removeChild(card);
+    }
+  });
+
+  // Update or create cards, and ensure correct DOM order
   data.forEach(function (r, idx) {
-    var bPct = batteryPercent(r.battery_mv);
-    var bClass = batteryClass(r.battery_mv);
-    var sClass = signalClass(r.rssi);
-    // Status dot: green=poll ok, red=poll failed, grey=never polled
-    var dotClass =
-      r.last_poll_ok === true
-        ? "online"
-        : r.last_poll_ok === false
-          ? "offline"
-          : "unknown";
-    var isLowBat = r.battery_mv > 0 && bPct <= lowBatPct;
-
-    // Hops: "--" never polled, "Direct" for 0 intermediates, "N hop(s)" otherwise
-    var hopsSeen = r.last_seen_epoch > 0;
-    var hopsLabel = !hopsSeen
-      ? "--"
-      : r.hops === 0
-        ? "Direct"
-        : r.hops + " hop" + (r.hops !== 1 ? "s" : "");
-    var routeChain = buildRouteChain(r, prefixToName);
-
-    // Ping button state
-    var cooldown = window._pingCooldowns[r.pubkey] || 0;
-    var pingRemaining = Math.max(0, Math.ceil(cooldown - now));
-    var pingDisabled = pingRemaining > 0;
-    var pingResult = window._pingResults[r.pubkey];
-    var pingLabel = pingRemaining > 0 ? pingRemaining + "s" : "Poll";
-    var pingClass = "card-ping-btn";
-    if (pingRemaining > 0 && pingResult) {
-      pingClass += pingResult.ok ? " ping-ok" : " ping-fail";
+    var card = grid.querySelector('.card[data-pubkey="' + r.pubkey + '"]');
+    if (card) {
+      updateCardElement(card, r, prefixToName, now, lowBatPct);
+    } else {
+      card = createCardElement(r, prefixToName, now, lowBatPct);
     }
-
-    // Advert button state (per-card cooldown)
-    var advertCooldown = window._advertCooldowns[r.pubkey] || 0;
-    var advertRemaining = Math.max(0, Math.ceil(advertCooldown - now));
-    var advertResult = window._advertResults[r.pubkey];
-    var advertLabel = advertRemaining > 0 ? advertRemaining + "s" : "Advert";
-    var advertClass = "card-advert-btn";
-    if (advertRemaining > 0 && advertResult) {
-      advertClass += advertResult.ok ? " advert-ok" : " advert-fail";
-    }
-
-    var card = document.createElement("div");
-    card.className = "card";
-    card.setAttribute("data-pubkey", r.pubkey);
-
-    var warningHtml = isLowBat
-      ? '<div class="battery-warning">LOW BATTERY - ' + bPct + "%</div>"
-      : "";
-
-    // Offline: only when poll explicitly failed (not just stale timeout)
-    var isOffline = r.last_poll_ok === false;
-
-    card.innerHTML =
-      warningHtml +
-      '<div class="card-header">' +
-      "<div>" +
-      '<div class="card-name">' +
-      escapeHtml(r.name) +
-      "</div>" +
-      '<div class="card-id">' +
-      (r.pubkey_short || r.pubkey.substring(0, 12)) +
-      "</div>" +
-      "</div>" +
-      '<span class="status-dot ' +
-      dotClass +
-      '"></span>' +
-      "</div>" +
-      '<div class="metrics">' +
-      '<div class="metric">' +
-      '<div class="metric-label">Battery</div>' +
-      '<div class="metric-value ' +
-      bClass +
-      '">' +
-      (r.battery_mv != null ? bPct : "--") +
-      '<span class="metric-unit"> %</span>' +
-      "</div>" +
-      '<div class="metric-sub">' +
-      (r.battery_voltage != null ? r.battery_voltage.toFixed(2) + " V" : "--") +
-      "</div>" +
-      '<div class="bar-bg">' +
-      '<div class="bar-fill" style="width:' +
-      bPct +
-      "%;background:" +
-      batteryColor(r.battery_mv) +
-      '"></div>' +
-      "</div>" +
-      "</div>" +
-      '<div class="metric">' +
-      '<div class="metric-label">RSSI</div>' +
-      '<div class="metric-value ' +
-      sClass +
-      '">' +
-      (r.rssi != null ? r.rssi : "--") +
-      '<span class="metric-unit"> dBm</span>' +
-      "</div>" +
-      "</div>" +
-      '<div class="metric">' +
-      '<div class="metric-label">SNR</div>' +
-      '<div class="metric-value">' +
-      (r.snr != null ? r.snr.toFixed(1) : "--") +
-      '<span class="metric-unit"> dB</span>' +
-      "</div>" +
-      "</div>" +
-      '<div class="metric">' +
-      '<div class="metric-label">Noise Floor</div>' +
-      '<div class="metric-value">' +
-      (r.noise_floor != null ? r.noise_floor : "--") +
-      '<span class="metric-unit"> dBm</span>' +
-      "</div>" +
-      "</div>" +
-      '<div class="metric">' +
-      '<div class="metric-label">Uptime</div>' +
-      '<div class="metric-value">' +
-      formatUptime(r.uptime_seconds) +
-      "</div>" +
-      "</div>" +
-      '<div class="metric">' +
-      '<div class="metric-label">Hops</div>' +
-      '<div class="metric-value">' +
-      hopsLabel +
-      "</div>" +
-      "</div>" +
-      (r.temperature != null
-        ? '<div class="metric">' +
-          '<div class="metric-label">Temp</div>' +
-          '<div class="metric-value">' +
-          r.temperature.toFixed(1) +
-          '<span class="metric-unit"> °C</span>' +
-          "</div>" +
-          "</div>"
-        : "") +
-      (r.humidity != null
-        ? '<div class="metric">' +
-          '<div class="metric-label">Humidity</div>' +
-          '<div class="metric-value">' +
-          r.humidity.toFixed(1) +
-          '<span class="metric-unit"> %</span>' +
-          "</div>" +
-          "</div>"
-        : "") +
-      (r.time_offset_seconds != null && Math.abs(r.time_offset_seconds) > 30
-        ? '<div class="metric">' +
-          '<div class="metric-label">Time Error</div>' +
-          '<div class="metric-value" style="color: #ef4444">' +
-          (r.time_offset_seconds > 0 ? "+" : "") +
-          r.time_offset_seconds +
-          '<span class="metric-unit"> s</span>' +
-          "</div>" +
-          "</div>"
-        : "") +
-      "</div>" +
-      '<div class="card-footer">' +
-      '<div class="card-footer-left">' +
-      '<div class="card-footer-seen">Last seen: ' +
-      timeAgo(r.last_seen_epoch) +
-      "</div>" +
-      (routeChain
-        ? '<div class="card-footer-route">' + escapeHtml(routeChain) + "</div>"
-        : "") +
-      (r.fw_version
-        ? '<div class="card-footer-fw" style="color:#64748b;font-size:0.75rem;margin-top:0.15rem;">' +
-          escapeHtml(r.fw_version) +
-          "</div>"
-        : "") +
-      (isOffline
-        ? '<div class="card-offline-text">No response to last poll</div>'
-        : "") +
-      "</div>" +
-      '<button class="' +
-      advertClass +
-      '" data-action="advert"' +
-      (advertRemaining > 0 ? " disabled" : "") +
-      ">" +
-      advertLabel +
-      "</button>" +
-      '<button class="' +
-      pingClass +
-      '" data-action="ping"' +
-      (pingDisabled ? " disabled" : "") +
-      ">" +
-      pingLabel +
-      "</button>" +
-      "</div>";
-
-    // Card click → history (ignore button clicks)
-    card.addEventListener("click", function (e) {
-      if (e.target.tagName === "BUTTON") return;
-      showHistory(r.pubkey, r.name);
-    });
-
-    card
-      .querySelector('[data-action="advert"]')
-      .addEventListener("click", function (e) {
-        e.stopPropagation();
-        sendAdvert(r.pubkey, e.currentTarget);
-      });
-
-    card
-      .querySelector('[data-action="ping"]')
-      .addEventListener("click", function (e) {
-        e.stopPropagation();
-        pingRepeater(r.pubkey, e.currentTarget);
-      });
-
+    // Append handles both adding new nodes and moving existing nodes to the correct sorted position
     grid.appendChild(card);
   });
 }
@@ -337,60 +480,35 @@ function renderRepeaters(rawData) {
 function sendAdvert(pubkey, btn) {
   if (!btn || btn.disabled) return;
   btn.disabled = true;
-  btn.className = "card-advert-btn";
-
-  window._advertCooldowns[pubkey] = Date.now() / 1000 + 15;
-  delete window._advertResults[pubkey];
-  _startAdvertCountdown(pubkey);
 
   fetch("/api/advert/" + encodeURIComponent(pubkey), { method: "POST" })
     .then(function (r) {
       return r.json();
     })
     .then(function (result) {
-      window._advertResults[pubkey] = result;
-      var b = document.querySelector(
-        '[data-pubkey="' + pubkey + '"] [data-action="advert"]',
-      );
-      if (b)
-        b.className =
-          "card-advert-btn " + (result.ok ? "advert-ok" : "advert-fail");
+      btn.disabled = false;
     })
     .catch(function () {
-      window._advertResults[pubkey] = { ok: false };
-      var b = document.querySelector(
-        '[data-pubkey="' + pubkey + '"] [data-action="advert"]',
-      );
-      if (b) b.className = "card-advert-btn advert-fail";
+      btn.disabled = false;
     });
 }
 
-function _startAdvertCountdown(pubkey) {
-  if (window._advertTimers[pubkey]) clearInterval(window._advertTimers[pubkey]);
-  function tick() {
-    var remaining = Math.max(
-      0,
-      Math.ceil(window._advertCooldowns[pubkey] - Date.now() / 1000),
-    );
-    var btn = document.querySelector(
-      '[data-pubkey="' + pubkey + '"] [data-action="advert"]',
-    );
-    if (remaining <= 0) {
-      clearInterval(window._advertTimers[pubkey]);
-      delete window._advertTimers[pubkey];
-      delete window._advertCooldowns[pubkey];
-      delete window._advertResults[pubkey];
-      if (btn) {
-        btn.textContent = "Advert";
-        btn.className = "card-advert-btn";
-        btn.disabled = false;
-      }
-      return;
-    }
-    if (btn) btn.textContent = remaining + "s";
-  }
-  tick();
-  window._advertTimers[pubkey] = setInterval(tick, 1000);
+// --- Set Clock ---
+
+function setClock(pubkey, btn) {
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+
+  fetch("/api/set_clock/" + encodeURIComponent(pubkey), { method: "POST" })
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (result) {
+      btn.disabled = false;
+    })
+    .catch(function () {
+      btn.disabled = false;
+    });
 }
 
 // --- Ping ---
@@ -875,6 +993,15 @@ function saveLogRetention() {
       console.error("Failed to save retention:", err);
     });
 }
+
+// --- Global click handler to close menus ---
+document.addEventListener("click", function (e) {
+  if (!e.target.closest(".menu-container")) {
+    document.querySelectorAll(".popup-menu").forEach(function (m) {
+      m.style.display = "none";
+    });
+  }
+});
 
 // --- Modal close handlers ---
 

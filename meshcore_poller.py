@@ -1608,30 +1608,35 @@ class MeshcorePoller:
             logger.error(f"[{name}] Telemetry request error: {e}")
             return False
 
-    async def ping_repeater(self, pubkey: str) -> dict:
-        """Request fresh status and telemetry from a repeater, updating the store."""
-        if not self.mc:
-            return {"ok": False, "error": "Not connected to companion device"}
-
+    async def get_repeater_contact_and_config(self, pubkey: str) -> tuple:
         contact = self._find_contact(pubkey)
+        repeater_cfg = None
+        error = ""
+
         if contact is None:
             await self._refresh_contacts()
             contact = self._find_contact(pubkey)
-        if contact is None:
-            return {
-                "ok": False,
-                "error": "Repeater not found in contacts — may be out of range",
-            }
+            if contact is None:
+                error += "Repeater not found in contacts — may be out of range. "
 
-        # Find name and admin password from config
-        repeater_cfg = None
         for r in self._cfg.repeaters:
             pk = r["pubkey"]
             if pk == pubkey or pk.startswith(pubkey) or pubkey.startswith(pk):
                 repeater_cfg = r
                 break
         if repeater_cfg is None:
-            return {"ok": False, "error": "Pubkey does not match any known repeaters"}
+            error += "Pubkey does not match any known repeaters."
+
+        return contact, repeater_cfg, error
+
+    async def ping_repeater(self, pubkey: str) -> dict:
+        """Request fresh status and telemetry from a repeater, updating the store."""
+        if not self.mc:
+            return {"ok": False, "error": "Not connected to companion device"}
+
+        contact, repeater_cfg, error = self.get_repeater_contact_and_config(pubkey)
+        if error:
+            return {"ok": False, "error": error}
 
         name = repeater_cfg.get("name", pubkey[:8])
         start = time.monotonic()
@@ -1649,32 +1654,56 @@ class MeshcorePoller:
         if not self.mc:
             return {"ok": False, "error": "Not connected to companion device"}
 
-        contact = self._find_contact(pubkey)
-        if contact is None:
-            await self._refresh_contacts()
-            contact = self._find_contact(pubkey)
-        if contact is None:
-            return {
-                "ok": False,
-                "error": "Repeater not found in contacts — may be out of range",
-            }
+        contact, repeater_cfg, error = self.get_repeater_contact_and_config(pubkey)
+        if error:
+            return {"ok": False, "error": error}
 
-        name = pubkey[:8]
-        admin_pass = "password"
-        for r in self._cfg.repeaters:
-            pk = r["pubkey"]
-            if pk == pubkey or pk.startswith(pubkey) or pubkey.startswith(pk):
-                admin_pass = r.get("admin_pass", "password")
-                name = r.get("name", name)
-                break
-
+        name = repeater_cfg.get("name", pubkey[:8])
+        admin_pass = repeater_cfg.get("admin_pass", "password")
         try:
-            await self._login_to_repeater(contact, name, admin_pass)
-            await asyncio.sleep(0.5)
-            await self.mc.commands.send_cmd(contact, "advert")
+            success = await self._login_to_repeater(contact, name, admin_pass)
+            if not success:
+                return {"ok": False, "error": f"Failed to log in to {name}"}
+            result = await self.mc.commands.send_cmd(contact, "advert")
+            if result.type == EventType.ERROR:
+                return {
+                    "ok": False,
+                    "error": f"Failed to send advert after login: {result.payload}",
+                }
             logger.info(f"[{name}] Flood advertisement command sent")
             self._log_event("advert_sent", name=name, pubkey=pubkey)
             return {"ok": True}
         except Exception as e:
             logger.error(f"[{name}] Failed to send advert: {e}")
+            return {"ok": False, "error": str(e)}
+
+    async def set_clock(self, pubkey: str) -> dict:
+        """Login to a repeater and set the clock using system clock."""
+        if not self.mc:
+            return {"ok": False, "error": "Not connected to companion device"}
+
+        contact, repeater_cfg, error = self.get_repeater_contact_and_config(pubkey)
+        if error:
+            return {"ok": False, "error": error}
+
+        name = repeater_cfg.get("name", pubkey[:8])
+        admin_pass = repeater_cfg.get("admin_pass", "password")
+        try:
+            success = await self._login_to_repeater(contact, name, admin_pass)
+            if not success:
+                return {"ok": False, "error": f"Failed to log in to {name}"}
+            await asyncio.sleep(0.5)
+            result = await self.mc.commands.send_cmd(
+                contact, f"time {int(time.time() + 0.5)}"
+            )
+            if result.type == EventType.ERROR:
+                return {
+                    "ok": False,
+                    "error": f"Failed to set clock after login: {result.payload}",
+                }
+            logger.info(f"[{name}] Clock time set")
+            self._log_event("clock_set", name=name, pubkey=pubkey)
+            return {"ok": True}
+        except Exception as e:
+            logger.error(f"[{name}] Failed to set clock: {e}")
             return {"ok": False, "error": str(e)}

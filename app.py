@@ -206,7 +206,7 @@ async def set_home_location(request: Request):
         lon = float(body.get("lon", 0.0))
     except (TypeError, ValueError):
         return {"ok": False, "error": "lat and lon must be numbers"}
-    
+
     cfg.home_lat = lat
     cfg.home_lon = lon
     cfg.save_settings()
@@ -417,6 +417,12 @@ async def ping_repeater(pubkey: str):
 async def send_advert(pubkey: str):
     """Login to a repeater and trigger it to broadcast a flood advertisement."""
     return await poller.send_advert(pubkey)
+
+
+@app.post("/api/set_clock/{pubkey}")
+async def set_clock(pubkey: str):
+    """Login to a repeater and set the clock using this devices clock."""
+    return await poller.set_clock(pubkey)
 
 
 @app.post("/api/ntfy/test")

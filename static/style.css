@@ -443,6 +443,56 @@ header .subtitle {
   color: #ef4444;
 }
 
+/* --- Card Footer Popup Menu --- */
+
+.menu-container {
+  position: relative;
+  display: inline-block;
+}
+
+.hamburger-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 0.3rem;
+  line-height: 1;
+}
+
+.hamburger-btn:hover {
+  color: #f1f5f9;
+}
+
+.popup-menu {
+  position: absolute;
+  right: 0;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  min-width: 120px;
+  padding: 0.25rem 0;
+}
+
+.popup-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #e2e8f0;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.popup-menu button:hover {
+  background: #334155;
+}
+
 /* --- History Modal --- */
 
 .modal-overlay {
