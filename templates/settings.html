@@ -315,7 +315,7 @@
       }
     }
 
-    function addRepeaterRow(name, pubkey, adminPass, path, fwVersion) {
+    function addRepeaterRow(name, pubkey, adminPass, path, fwVersion, lat, lon) {
       var list = document.getElementById('repeaterList');
       var row = document.createElement('div');
       row.className = 'repeater-row';
@@ -327,24 +327,34 @@
           '<button class="card-move-btn rpt-move-up" title="Move up">&#8593;</button>' +
           '<button class="card-move-btn rpt-move-down" title="Move down">&#8595;</button>' +
         '</div>' +
-        '<div class="settings-field">' +
-          '<label>Name</label>' +
-          '<input type="text" class="rpt-name" placeholder="My Repeater" value="' + escapeAttr(name || '') + '">' +
-          fwBadge +
+        '<div style="flex:1; display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem; align-items:flex-end;">' +
+          '<div class="settings-field" style="grid-column: span 1;">' +
+            '<label>Name</label>' +
+            '<input type="text" class="rpt-name" placeholder="My Repeater" value="' + escapeAttr(name || '') + '">' +
+            fwBadge +
+          '</div>' +
+          '<div class="settings-field" style="grid-column: span 3;">' +
+            '<label>Public Key</label>' +
+            '<input type="text" class="rpt-pubkey" placeholder="a1b2c3d4e5f6..." value="' + escapeAttr(pubkey || '') + '">' +
+          '</div>' +
+          '<div class="settings-field">' +
+            '<label>Admin Pass</label>' +
+            '<input type="text" class="rpt-pass" placeholder="password" value="' + escapeAttr(adminPass || '') + '">' +
+          '</div>' +
+          '<div class="settings-field">' +
+            '<label>Path</label>' +
+            '<input type="text" class="rpt-path" placeholder="4d,3c,ee" value="' + escapeAttr(path || '') + '">' +
+          '</div>' +
+          '<div class="settings-field">' +
+            '<label>Default lat</label>' +
+            '<input type="text" class="rpt-lat" placeholder="" value="' + escapeAttr(lat || '') + '">' +
+          '</div>' +
+          '<div class="settings-field">' +
+            '<label>Default lon</label>' +
+            '<input type="text" class="rpt-lon" placeholder="" value="' + escapeAttr(lon || '') + '">' +
+          '</div>' +
         '</div>' +
-        '<div class="settings-field">' +
-          '<label>Public Key</label>' +
-          '<input type="text" class="rpt-pubkey" placeholder="a1b2c3d4e5f6..." value="' + escapeAttr(pubkey || '') + '">' +
-        '</div>' +
-        '<div class="settings-field settings-field-small">' +
-          '<label>Admin Pass</label>' +
-          '<input type="text" class="rpt-pass" placeholder="password" value="' + escapeAttr(adminPass || '') + '">' +
-        '</div>' +
-        '<div class="settings-field settings-field-path">' +
-          '<label>Path</label>' +
-          '<input type="text" class="rpt-path" placeholder="4d,3c,ee" value="' + escapeAttr(path || '') + '">' +
-        '</div>' +
-        '<button class="btn-remove" title="Remove">&times;</button>';
+        '<button class="btn-remove" style="align-self: flex-start; margin-top: 3.25rem;" title="Remove">&times;</button>';
 
       row.querySelector('.rpt-move-up').addEventListener('click', function() { moveRepeaterRow(row, -1); });
       row.querySelector('.rpt-move-down').addEventListener('click', function() { moveRepeaterRow(row, 1); });
@@ -419,9 +429,13 @@
         var p = rows[j].querySelector('.rpt-pubkey').value.trim();
         var pw = rows[j].querySelector('.rpt-pass').value.trim();
         var pt = rows[j].querySelector('.rpt-path').value.trim();
+        var lat = rows[j].querySelector('.rpt-lat').value.trim();
+        var lon = rows[j].querySelector('.rpt-lon').value.trim();
         if (n && p) {
           var rpt = { name: n, pubkey: p, path: pt };
           if (pw) rpt.admin_pass = pw;
+          if (lat) rpt.lat = lat;
+          if (lon) rpt.lon = lon;
           repeaters.push(rpt);
         } else if (n || p) {
           showStatus('Each repeater needs both a name and public key', true);
@@ -601,7 +615,7 @@
               } else {
                 repeaters.forEach(function(r) {
                   var fw = fwMap[r.pubkey] || '';
-                  addRepeaterRow(r.name, r.pubkey, r.admin_pass, r.path, fw);
+                  addRepeaterRow(r.name, r.pubkey, r.admin_pass, r.path, fw, r.lat, r.lon);
                 });
               }
             });

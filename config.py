@@ -140,3 +140,9 @@ class Config(UserConfigurables):
 
     def as_dict(self):
         return UserConfigurables(**self.model_dump()).model_dump(mode="json")
+
+    def get_repeater(self, pubkey):
+        for r in self.repeaters:
+            if r["pubkey"] == pubkey:
+                return r
+        return None

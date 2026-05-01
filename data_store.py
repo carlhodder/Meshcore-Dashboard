@@ -430,20 +430,32 @@ class DataStore:
                 r.save()
 
     def get_all(self) -> List[dict]:
-        """Return all repeater states as a JSON-serializable list."""
+        """Return all repeater states as a JSON-serializable list. This will use the configured default lat/long if the
+        repeater has not returned it's own value.
+        """
         with self._lock:
-            return [r.to_dict() for r in self._repeaters.values()]
+            result = []
+            for pubkey, r in self._repeaters.items():
+                data = r.to_dict()
+                if not data["lat"] or not data["lon"]:
+                    repeater_cfg = self.cfg.get_repeater(pubkey)
+                    if repeater_cfg:
+                        data["lat"] = data["lat"] or repeater_cfg.get("lat", 0.0)
+                        data["lon"] = data["lon"] or repeater_cfg.get("lon", 0.0)
+                result.append(data)
+            return result
 
     def get(self, pubkey):
         repeater = None
-        for r in self._repeaters.values():
-            if (
-                r.pubkey == pubkey
-                or pubkey.startswith(r.pubkey)
-                or r.pubkey.startswith(pubkey)
-            ):
-                repeater = r.to_dict()
-                break
+        with self._lock:
+            for r in self._repeaters.values():
+                if (
+                    r.pubkey == pubkey
+                    or pubkey.startswith(r.pubkey)
+                    or r.pubkey.startswith(pubkey)
+                ):
+                    repeater = r.to_dict()
+                    break
         return repeater
 
     def get_history(
