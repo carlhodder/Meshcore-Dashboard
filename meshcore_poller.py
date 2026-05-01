@@ -1479,13 +1479,11 @@ class MeshcorePoller:
         try:
             if custom_path:
                 # Parse comma-separated hex bytes like "4d,3c,ee"
-                path_bytes = bytes.fromhex(
-                    custom_path.replace(" ", "").replace(",", "")
-                )
+                path_bytes = bytes.fromhex(custom_path.replace(",", ""))
                 await self.mc.commands.change_contact_path(contact, path_bytes)
                 logger.info(f"[{name}] Set custom path: {custom_path}")
             else:
-                await self.mc.commands.reset_path(pubkey)
+                await self.mc.commands.reset_path(bytes.fromhex(pubkey))
                 logger.debug(f"[{name}] Using flood routing")
         except Exception as e:
             logger.error(f"[{name}] Path update error: {e}")
