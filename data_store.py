@@ -323,7 +323,6 @@ class DataStore:
             if deleted is not None:
                 deleted.save()
 
-
     def sync_repeaters(self):
         """Sync store with configured repeater list. Add new, remove stale."""
         configured_keys = {r["pubkey"] for r in self.cfg.repeaters}
@@ -454,13 +453,14 @@ class DataStore:
                     .order_by(Measurement.timestamp)
                 )
 
-                # Now reformat to what the charter expects
+                # Now reformat to what the charter expects, also round timestamp so they're all
+                # grouped by 5 minute blocks.
                 output_format = OrderedDict()
                 data_keys = set()
                 for meas in query:
                     if meas.measurement_code in RepeaterState.metric_labels.keys():
                         data_keys.add(meas.measurement_code)
-                        output_format.setdefault(meas.timestamp, {})[
+                        output_format.setdefault(round(meas.timestamp / 300) * 300, {})[
                             meas.measurement_code
                         ] = meas.measurement_value
                 items = {

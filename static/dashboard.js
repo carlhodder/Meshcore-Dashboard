@@ -149,7 +149,7 @@ function renderRepeaters(rawData) {
     var pingRemaining = Math.max(0, Math.ceil(cooldown - now));
     var pingDisabled = pingRemaining > 0;
     var pingResult = window._pingResults[r.pubkey];
-    var pingLabel = pingRemaining > 0 ? pingRemaining + "s" : "Refresh";
+    var pingLabel = pingRemaining > 0 ? pingRemaining + "s" : "Poll";
     var pingClass = "card-ping-btn";
     if (pingRemaining > 0 && pingResult) {
       pingClass += pingResult.ok ? " ping-ok" : " ping-fail";
@@ -499,10 +499,12 @@ var _currentHistoryPubkey = null;
 var _currentHistoryName = null;
 var _currentHistoryData = null;
 var _currentHistoryItems = null;
+var _selectedMetricsState = null;
 
 function showHistory(pubkey, name) {
   _currentHistoryPubkey = pubkey;
   _currentHistoryName = name;
+  _selectedMetricsState = null; // Reset selection state on new modal open
   var modal = document.getElementById("historyModal");
   if (!modal) return;
 
@@ -532,7 +534,7 @@ function refreshHistory() {
     title.textContent = _currentHistoryName + " - " + titleSuffix;
   }
 
-  var qs = "?days=1";
+  var qs = "?hours=24";
   if (period === "week") qs = "?days=7";
   else if (period === "month") qs = "?months=1";
   else if (period === "year") qs = "?months=12";
@@ -567,8 +569,15 @@ function refreshHistory() {
             var cb = document.createElement("input");
             cb.type = "checkbox";
             cb.value = key;
-            if (defaults.indexOf(key) !== -1) cb.checked = true;
-            cb.addEventListener("change", renderHistoryChart);
+            if (_selectedMetricsState !== null) {
+              if (_selectedMetricsState.indexOf(key) !== -1) cb.checked = true;
+            } else if (defaults.indexOf(key) !== -1) {
+              cb.checked = true;
+            }
+            cb.addEventListener("change", function () {
+              updateSelectedMetricsState();
+              renderHistoryChart();
+            });
 
             label.appendChild(cb);
             label.appendChild(document.createTextNode(items[key]));
@@ -582,6 +591,16 @@ function refreshHistory() {
     .catch(function (err) {
       console.error("History fetch error:", err);
     });
+}
+
+function updateSelectedMetricsState() {
+  var cbs = document.querySelectorAll(
+    "#metricsDropdown input[type=checkbox]:checked",
+  );
+  _selectedMetricsState = [];
+  for (var i = 0; i < cbs.length; i++) {
+    _selectedMetricsState.push(cbs[i].value);
+  }
 }
 
 function renderHistoryChart() {
@@ -688,6 +707,11 @@ function renderHistoryChart() {
     },
     options: {
       responsive: true,
+      spanGaps: true,
+      segment: {
+        // p0 and p1 represent the points at either end of the segment
+        borderDash: (ctx) => (ctx.p0.skip || ctx.p1.skip ? [5, 5] : undefined),
+      },
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: { labels: { color: "#94a3b8" } },
