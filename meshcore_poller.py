@@ -249,7 +249,6 @@ class MeshcorePoller:
             else:
                 logger.debug("Duty-cycle polling paused — skipping this cycle")
 
-
         # Unsubscribe before disconnecting
         self._unsubscribe_messages()
 
@@ -1086,7 +1085,9 @@ class MeshcorePoller:
                 if isinstance(key, str)
                 else (key.hex() if isinstance(key, bytes) else str(key))
             )
-            if pk.startswith(pubkey_prefix[:8].upper()) or pubkey_prefix.upper().startswith(pk[:8]):
+            if pk.startswith(
+                pubkey_prefix[:8].upper()
+            ) or pubkey_prefix.upper().startswith(pk[:8]):
                 name = contact.get("name", "") if isinstance(contact, dict) else ""
                 return name if name else pubkey_prefix[:8]
         return pubkey_prefix[:8]
@@ -1156,7 +1157,7 @@ class MeshcorePoller:
 
             contacts = result.payload
             if isinstance(contacts, dict):
-                self._contacts = {k.upper(): v for k,v in contacts.items()}
+                self._contacts = {k.upper(): v for k, v in contacts.items()}
             elif isinstance(contacts, list):
                 self._contacts = {}
                 for c in contacts:
@@ -1300,6 +1301,31 @@ class MeshcorePoller:
             await asyncio.sleep(min(remaining, 0.5))
             remaining -= 0.5
 
+    async def __repeat_on_failure(
+        self, func, f_args, f_kwargs={}, reattempts=2, delay_s=1
+    ):
+        """
+        Repeat a function call until a truthy result is returned, else return False.
+        NOTE: Can be interrupted by not _running or _needs_reconnect/_stay_disconnected between reattempts which will return None
+        """
+        i = 0
+        while i < max(reattempts, 0) + 1:
+            success = func(*f_args, **f_kwargs)
+            if success:
+                return success
+            else:
+                if (
+                    not self._running
+                    or self._needs_reconnect
+                    or self._stay_disconnected
+                ):
+                    return None
+                else:
+                    await self._interruptible_sleep(delay_s)
+            i += 1
+
+        return False
+
     async def _poll_repeater(self, contact, repeater_cfg):
         pubkey = repeater_cfg["pubkey"]
         name = repeater_cfg["name"]
@@ -1374,17 +1400,30 @@ class MeshcorePoller:
 
         # Login to repeater before requesting data
         admin_pass = repeater_cfg.get("admin_pass", "password")
-        await self._login_to_repeater(contact, name, admin_pass)
-        await self._interruptible_sleep(3)
-        if not self._running or self._needs_reconnect or self._stay_disconnected:
-            return
+        success = self.__repeat_on_failure(
+            self._login_to_repeater, [contact, name, admin_pass], reattempts=1
+        )
+        if success:
+            await self._interruptible_sleep(1)
+            if not self._running or self._needs_reconnect or self._stay_disconnected:
+                return
+            success = self.__repeat_on_failure(
+                self._request_status, [pubkey, name, contact]
+            )
+        if success:
+            await self._interruptible_sleep(1)
+            if not self._running or self._needs_reconnect or self._stay_disconnected:
+                return
 
-        await self._request_status(pubkey, name, contact)
-        await self._interruptible_sleep(2)
-        if not self._running or self._needs_reconnect or self._stay_disconnected:
-            return
+            success = self.__repeat_on_failure(
+                self._request_telemetry, [pubkey, name, contact]
+            )
 
-        await self._request_telemetry(pubkey, name, contact)
+        # Note: Success could be 'None' if required to abort between attempts due to running/reconnect/etc.
+        if success is False:
+            logger.debug("Maximum reattempts exceeded, aborting")
+            self.store.mark_poll_failed(pubkey)
+            return
 
     async def _discover_path(
         self, contact, pubkey: str, name: str, configured_contact=True
@@ -1440,7 +1479,9 @@ class MeshcorePoller:
         try:
             if custom_path:
                 # Parse comma-separated hex bytes like "4d,3c,ee"
-                path_bytes = bytes.fromhex(custom_path.replace(" ", "").replace(",", ""))
+                path_bytes = bytes.fromhex(
+                    custom_path.replace(" ", "").replace(",", "")
+                )
                 await self.mc.commands.change_contact_path(contact, path_bytes)
                 logger.info(f"[{name}] Set custom path: {custom_path}")
             else:
@@ -1455,12 +1496,15 @@ class MeshcorePoller:
             result = await self.mc.commands.send_login_sync(contact, password)
             if result is None:
                 logger.warning(f"[{name}] Login failed")
+                return False
             else:
                 logger.info(
                     f"[{name}] Login sent (pwd={'default' if password == 'password' else 'custom'})"
                 )
+                return True
         except Exception as e:
             logger.error(f"[{name}] Login error: {e}")
+            return False
 
     async def _request_status(self, pubkey: str, name: str, contact):
         """Request status from a repeater and update the store."""
@@ -1469,8 +1513,7 @@ class MeshcorePoller:
             status = await self.mc.commands.req_status_sync(contact, timeout=30)
             if status is None:
                 logger.warning(f"[{name}] Status request timed out")
-                self.store.mark_poll_failed(pubkey)
-                return
+                return False
 
             updates = {}
 
@@ -1526,9 +1569,11 @@ class MeshcorePoller:
                     f"RSSI={updates.get('rssi', '?')}dBm, "
                     f"SNR={updates.get('snr', '?')}dB"
                 )
+            return True
 
         except Exception as e:
             logger.error(f"[{name}] Status request error: {e}")
+            return False
 
     async def _request_telemetry(self, pubkey: str, name: str, contact):
         """Request LPP telemetry and update the store with any extra data."""
@@ -1536,7 +1581,7 @@ class MeshcorePoller:
             telemetry = await self.mc.commands.req_telemetry_sync(contact, timeout=30)
             if telemetry is None:
                 logger.debug(f"[{name}] Telemetry request returned no data")
-                return
+                return False
 
             updates = {}
             sensors = telemetry if isinstance(telemetry, list) else []
@@ -1560,8 +1605,10 @@ class MeshcorePoller:
                 self.store.update_repeater(pubkey, **updates)
                 logger.info(f"[{name}] Telemetry: {updates}")
 
+            return True
         except Exception as e:
             logger.error(f"[{name}] Telemetry request error: {e}")
+            return False
 
     async def ping_repeater(self, pubkey: str) -> dict:
         """Request fresh status and telemetry from a repeater, updating the store."""

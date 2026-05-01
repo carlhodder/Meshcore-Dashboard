@@ -378,7 +378,7 @@ class DataStore:
                     self._repeaters[pubkey].save()
 
     def mark_poll_failed(self, pubkey: str):
-        """Mark the last poll as failed (status request timed out)."""
+        """Mark the last poll as failed (login, status, or telemetry request attempts timed out)."""
         with self._lock:
             if pubkey in self._repeaters:
                 self._repeaters[pubkey].last_poll_ok = False
