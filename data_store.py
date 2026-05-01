@@ -141,6 +141,7 @@ class RepeaterState(BaseDbModel):
     last_poll_ok = BooleanField(null=True, default=None)
     last_poll_timestamp = FloatField(null=False, default=0)
     last_neighbour_poll = FloatField(null=False, default=0)
+    last_clock_poll = FloatField(null=False, default=0)
     temperature = FloatField(null=True, default=None)
     humidity = FloatField(null=True, default=None)
 
@@ -312,30 +313,32 @@ class DataStore:
         """Register a repeater from config. Called at startup or config save."""
         # Register any initially configured repeaters
         with self._lock:
-            for r in self.cfg.repeaters:
-                pubkey = r["pubkey"]
-                name = r["name"]
-                if pubkey not in self._repeaters:
-                    self._repeaters[pubkey] = RepeaterState.get_or_none(
-                        RepeaterState.pubkey == pubkey
-                    )
-                    if self._repeaters[pubkey] is None:
-                        self._repeaters[pubkey] = RepeaterState(
-                            name=name, pubkey=pubkey
+            with db.connection_context():
+                for r in self.cfg.repeaters:
+                    pubkey = r["pubkey"]
+                    name = r["name"]
+                    if pubkey not in self._repeaters:
+                        self._repeaters[pubkey] = RepeaterState.get_or_none(
+                            RepeaterState.pubkey == pubkey
                         )
-                        self._repeaters[pubkey].save(force_insert=True)
-                else:
-                    # Update name if it changed in settings
-                    self._repeaters[pubkey].name = name
-                    if self._db_path:
-                        self._repeaters[pubkey].save()
+                        if self._repeaters[pubkey] is None:
+                            self._repeaters[pubkey] = RepeaterState(
+                                name=name, pubkey=pubkey
+                            )
+                            self._repeaters[pubkey].save(force_insert=True)
+                    else:
+                        # Update name if it changed in settings
+                        self._repeaters[pubkey].name = name
+                        if self._db_path:
+                            self._repeaters[pubkey].save()
 
     def remove_repeater(self, pubkey: str):
         """Remove a repeater from the live store (when deleted from settings)."""
         with self._lock:
             deleted = self._repeaters.pop(pubkey, None)
             if deleted is not None:
-                deleted.save()
+                with db.connection_context():
+                    deleted.save()
 
     def sync_repeaters(self):
         """Sync store with configured repeater list. Add new, remove stale."""
@@ -344,7 +347,8 @@ class DataStore:
             # Remove repeaters no longer in config
             for pk in list(self._repeaters.keys()):
                 if pk not in configured_keys:
-                    self._repeaters[pk].save()
+                    with db.connection_context():
+                        self._repeaters[pk].save()
                     del self._repeaters[pk]
         # Add/update configured ones
         self.init_repeaters()
@@ -367,7 +371,8 @@ class DataStore:
                 self._repeaters[pubkey].hops = hops
                 self._repeaters[pubkey].route_path = route_path
                 if self._db_path:
-                    self._repeaters[pubkey].save()
+                    with db.connection_context():
+                        self._repeaters[pubkey].save()
 
     def get_route_by_prefix(self, pubkey_prefix: str) -> tuple:
         """Return (hops, route_path) for the first repeater whose pubkey starts with the given prefix.
@@ -389,7 +394,8 @@ class DataStore:
                 self._repeaters[pubkey].lat = lat
                 self._repeaters[pubkey].lon = lon
                 if self._db_path:
-                    self._repeaters[pubkey].save()
+                    with db.connection_context():
+                        self._repeaters[pubkey].save()
 
     def mark_poll_failed(self, pubkey: str):
         """Mark the last poll as failed (login, status, or telemetry request attempts timed out)."""
@@ -398,36 +404,38 @@ class DataStore:
                 self._repeaters[pubkey].last_poll_ok = False
                 self._repeaters[pubkey].last_poll_timestamp = time.time()
                 if self._db_path:
-                    self._repeaters[pubkey].save()
+                    with db.connection_context():
+                        self._repeaters[pubkey].save()
 
     def update_repeater(self, pubkey: str, **kwargs):
         """Update a repeater's state with new data from a poll response."""
         with self._lock:
-            ts = time.time()
-            if pubkey not in self._repeaters:
-                self._repeaters[pubkey] = RepeaterState(pubkey=pubkey)
+            with db.connection_context():
+                ts = time.time()
+                if pubkey not in self._repeaters:
+                    self._repeaters[pubkey] = RepeaterState(pubkey=pubkey)
 
-            r = self._repeaters[pubkey]
-            for k, v in kwargs.items():
-                if hasattr(r, k) and v is not None:
-                    setattr(r, k, v)
-                    if self._db_path and isinstance(v, numbers.Number):
-                        try:
-                            with db.connection_context():
-                                Measurement.create(
-                                    timestamp=ts,
-                                    pubkey=pubkey,
-                                    measurement_code=k,
-                                    measurement_value=float(v),
-                                )
-                        except Exception as e:
-                            print(f"[DataStore] DB write error: {e}")
-            r.last_seen_epoch = ts
-            r.last_poll_ok = True
-            r.last_poll_timestamp = ts
+                r = self._repeaters[pubkey]
+                for k, v in kwargs.items():
+                    if hasattr(r, k) and v is not None:
+                        setattr(r, k, v)
+                        if self._db_path and isinstance(v, numbers.Number):
+                            try:
+                                with db.connection_context():
+                                    Measurement.create(
+                                        timestamp=ts,
+                                        pubkey=pubkey,
+                                        measurement_code=k,
+                                        measurement_value=float(v),
+                                    )
+                            except Exception as e:
+                                print(f"[DataStore] DB write error: {e}")
+                r.last_seen_epoch = ts
+                r.last_poll_ok = True
+                r.last_poll_timestamp = ts
 
-            if self._db_path:
-                r.save()
+                if self._db_path:
+                    r.save()
 
     def get_all(self) -> List[dict]:
         """Return all repeater states as a JSON-serializable list. This will use the configured default lat/long if the
@@ -697,6 +705,25 @@ class DataStore:
         except Exception as e:
             print(f"[DataStore] Activity log prune error: {e}")
 
+    def update_repeater_clock(self, pubkey, timestamp):
+        try:
+            time_offset_seconds = round(
+                (
+                    datetime.fromtimestamp(timestamp) - time.time()
+                ).total_seconds()
+            )
+            with self._lock:
+                if pubkey in self._repeaters:
+                    self._repeaters[pubkey].time = timestamp
+                    self._repeaters[pubkey].time = time_offset_seconds
+                    self._repeaters[pubkey].last_clock_poll = time.time()
+                    if self._db_path:
+                        with db.connection_context():
+                            self._repeaters[pubkey].save()
+        except Exception as e:
+            print(f"[DataStore] Repeater time update error: {e}")
+        
+
     def save_neighbours(self, pubkey, neighbour_data):
         # The neighbours data consists of lines of:
         # {pubkey-prefix}:{timestamp}:{snr*4}
@@ -727,4 +754,5 @@ class DataStore:
 
         self.last_neighbour_poll = time.time()
         if self._db_path:
-            self.save()
+            with db.connection_context():
+                self.save()

@@ -387,15 +387,6 @@ class MeshcorePoller:
         except Exception as e:
             logger.debug(f"ADVERTISEMENT not available: {e}")
 
-        # Log all available EventType values so we can find the telemetry event
-        try:
-            all_event_types = [
-                attr for attr in dir(EventType) if not attr.startswith("_")
-            ]
-            logger.info(f"[companion] Available EventTypes: {all_event_types}")
-        except Exception:
-            pass
-
         # Try to subscribe to telemetry/sensor events to get companion battery
         for et_name in (
             "BATTERY",
@@ -1431,6 +1422,20 @@ class MeshcorePoller:
                 self._request_neighbours, [pubkey, name, contact]
             )
 
+        # Get clock if needed
+        if (
+            success
+            and self._cfg.clock_check_enabled
+            and time.time()
+            >= repeater_cfg.last_clock_poll + self._cfg.clock_check_hours * 60 * 60
+        ):
+            await self._interruptible_sleep(1)
+            if not self._running or self._needs_reconnect or self._stay_disconnected:
+                return
+            success = self.__repeat_on_failure(
+                self._request_clock(pubkey, name, contact)
+            )
+
         # Note: Success could be 'None' if required to abort between attempts due to running/reconnect/etc.
         if success is False:
             logger.debug("Maximum reattempts exceeded, aborting")
@@ -1519,21 +1524,12 @@ class MeshcorePoller:
     async def _request_status(self, pubkey: str, name: str, contact):
         """Request status from a repeater and update the store."""
         try:
-            start_time = datetime.now()
             status = await self.mc.commands.req_status_sync(contact, timeout=30)
             if status is None:
                 logger.warning(f"[{name}] Status request timed out")
                 return False
 
             updates = {}
-
-            if "time" in status:
-                updates["time"] = float(status["time"])
-                updates["time_offset_seconds"] = round(
-                    (
-                        datetime.fromtimestamp(updates["time"]) - start_time
-                    ).total_seconds()
-                )
 
             if "bat" in status:
                 updates["battery_mv"] = status["bat"]
@@ -1634,6 +1630,22 @@ class MeshcorePoller:
         except Exception as e:
             logger.error(f"[{name}] Neighbours request error: {e}")
             return False
+        
+    async def _request_clock(self, pubkey: str, name: str, contact):
+        """Request internal clock and update the store with results."""
+        try:
+            result = await self.mc.commands.send_cmd(contact, "time")
+            if result.type == EventType.ERROR:
+                logger.debug(f"[{name}] Clock/repeater time request failed")
+                return False
+
+            self.store.update_repeater_clock(pubkey, result.payload)
+
+            return True
+        except Exception as e:
+            logger.error(f"[{name}] Clock/repeater time request error: {e}")
+            return False
+
 
     async def get_repeater_contact_and_config(self, pubkey: str) -> tuple:
         contact = self._find_contact(pubkey)

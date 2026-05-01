@@ -136,6 +136,21 @@
       </div>
     </div>
 
+    <!-- clock -->
+    <div class="settings-section">
+      <h3>Device Clock/time</h3>
+      <div class="settings-row">
+        <div class="settings-field" style="flex-direction:row; align-items:center; gap:0.5rem; justify-content:flex-start">
+          <input type="checkbox" id="clockCheckEnabled">
+          <label for="clockCheckEnabled" style="margin:0; padding:0">Enable</label>
+        </div>
+        <div class="settings-field">
+          <label for="clockCheckHours">Interval (hours)</label>
+          <input type="number" id="clockCheckHours" placeholder="24">
+        </div>
+      </div>
+    </div>
+
     <!-- Map -->
     <div class="settings-section">
       <h3>Map</h3>
@@ -406,6 +421,8 @@
       var nodeIdChars = document.getElementById('nodeIdChars').value.trim();
       var neighboursEnabled = document.getElementById('neighboursEnabled').checked;
       var neighboursInterval = document.getElementById('neighboursInterval').value.trim();
+      var clockCheckEnabled = document.getElementById('clockCheckEnabled').checked;
+      var clockCheckHours = document.getElementById('clockCheckHours').value.trim();
 
       if (!host) { showStatus('Companion IP is required', true); return; }
 
@@ -462,7 +479,9 @@
         ntfy_server: ntfyServer,
         dashboard_url: dashboardUrl,
         neighbours_enabled: neighboursEnabled,
-        neighbours_interval: neighboursInterval
+        neighbours_interval: neighboursInterval,
+        clock_check_enabled: clockCheckEnabled,
+        clock_check_hours: clockCheckHours
       };
       
       fetch('/api/settings', {
@@ -585,6 +604,8 @@
           document.getElementById('dashboardUrl').value = s.dashboard_url;
           document.getElementById('neighboursEnabled').checked = s.neighbours_enabled;
           document.getElementById('neighboursInterval').value = s.neighbours_interval;
+          document.getElementById('clockCheckEnabled').checked = s.clock_check_enabled;
+          document.getElementById('clockCheckHours').value = s.clock_check_hours;
 
           // Set placeholder text for host given type
           toggleType({value: s.companion_type});

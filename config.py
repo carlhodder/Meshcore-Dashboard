@@ -44,6 +44,8 @@ class UserConfigurables(BaseModel):
     home_lon: float = 0.0
     neighbours_enabled: bool = True
     neighbours_interval: int = 21600  # 6 hours
+    clock_check_enabled: bool = True
+    clock_check_hours: int = 24
 
     @field_validator("companion_type", mode="after")
     @classmethod
