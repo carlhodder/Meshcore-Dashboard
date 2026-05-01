@@ -26,12 +26,11 @@ class UserConfigurables(BaseModel):
         TCP = 2
 
     companion_type: int = CompanionType.TCP
-    companion_host: str = "" 
+    companion_host: str = ""
     companion_port: int = 5000
     repeaters: List[Dict[str, Any]] = []
-    poll_interval_seconds: int = 3600
+    poll_interval_seconds: int = 7200  # 2 Hours
     stagger_delay_seconds: int = 30
-    stale_threshold_seconds: int = 900
     low_battery_percent: int = 20
     log_retention_hours: int = 24
     map_path_max_km: int = 300
@@ -43,6 +42,8 @@ class UserConfigurables(BaseModel):
     dashboard_url: str = ""
     home_lat: float = 0.0
     home_lon: float = 0.0
+    neighbours_enabled: bool = True
+    neighbours_interval: int = 21600  # 6 hours
 
     @field_validator("companion_type", mode="after")
     @classmethod
@@ -54,8 +55,8 @@ class UserConfigurables(BaseModel):
     @field_validator("poll_interval_seconds", mode="after")
     @classmethod
     def poll_interval_seconds_is_valid(cls, value) -> int:
-        if value < 30:
-            raise ValueError("Poll interval must be >= 30s")
+        if value < 600:
+            raise ValueError("Poll interval must be >= 600s (10 mins)")
         return value
 
     @field_validator("stagger_delay_seconds", mode="after")
@@ -63,13 +64,6 @@ class UserConfigurables(BaseModel):
     def stagger_delay_seconds_is_valid(cls, value) -> int:
         if value < 5:
             raise ValueError("Stagger delay must be >= 5s")
-        return value
-
-    @field_validator("stale_threshold_seconds", mode="after")
-    @classmethod
-    def stale_threshold_seconds_is_valid(cls, value) -> int:
-        if value < 60:
-            raise ValueError("Stale threshold must be >= 60s")
         return value
 
     @field_validator("log_retention_hours", mode="after")
@@ -91,6 +85,15 @@ class UserConfigurables(BaseModel):
     def node_id_chars_is_valid(cls, value) -> int:
         if value not in [2, 4, 6]:
             raise ValueError("Node id chars must be 2, 4, or 6")
+        return value
+
+    @field_validator("neighbours_interval", mode="after")
+    @classmethod
+    def neighbours_interval_is_valid(cls, value) -> int:
+        if value < 600:
+            raise ValueError("neighbours_interval must be >= 600 (10 mins)")
+        # If the value is less than poll seconds it will be polled at that rate, but
+        # this isn't an error so we'll just ignore smaller values.
         return value
 
 

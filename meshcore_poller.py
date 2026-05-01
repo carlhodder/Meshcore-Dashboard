@@ -1414,9 +1414,21 @@ class MeshcorePoller:
             await self._interruptible_sleep(1)
             if not self._running or self._needs_reconnect or self._stay_disconnected:
                 return
-
             success = self.__repeat_on_failure(
                 self._request_telemetry, [pubkey, name, contact]
+            )
+        # Get neighbours if needed
+        if (
+            success
+            and self._cfg.neighbours_enabled
+            and time.time()
+            >= repeater_cfg.last_neighbour_poll + self._cfg.neighbours_interval
+        ):
+            await self._interruptible_sleep(1)
+            if not self._running or self._needs_reconnect or self._stay_disconnected:
+                return
+            success = self.__repeat_on_failure(
+                self._request_neighbours, [pubkey, name, contact]
             )
 
         # Note: Success could be 'None' if required to abort between attempts due to running/reconnect/etc.
@@ -1606,6 +1618,21 @@ class MeshcorePoller:
             return True
         except Exception as e:
             logger.error(f"[{name}] Telemetry request error: {e}")
+            return False
+
+    async def _request_neighbours(self, pubkey: str, name: str, contact):
+        """Request neighbours and update the store with results."""
+        try:
+            result = await self.mc.commands.req_neighbours_sync(contact, timeout=30)
+            if result == None:
+                logger.debug(f"[{name}] Neighbours request failed")
+                return False
+
+            self.store.save_neighbours(pubkey, result)
+
+            return True
+        except Exception as e:
+            logger.error(f"[{name}] Neighbours request error: {e}")
             return False
 
     async def get_repeater_contact_and_config(self, pubkey: str) -> tuple:

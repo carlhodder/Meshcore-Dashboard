@@ -121,6 +121,21 @@
       </div>
     </div>
 
+    <!-- Neighbours -->
+    <div class="settings-section">
+      <h3>Neighbours</h3>
+      <div class="settings-row">
+        <div class="settings-field" style="flex-direction:row; align-items:center; gap:0.5rem; justify-content:flex-start">
+          <input type="checkbox" id="neighboursEnabled">
+          <label for="neighboursEnabled" style="margin:0; padding:0">Enable</label>
+        </div>
+        <div class="settings-field">
+          <label for="neighboursInterval">Interval (seconds)</label>
+          <input type="number" id="neighboursInterval" placeholder="10800">
+        </div>
+      </div>
+    </div>
+
     <!-- Map -->
     <div class="settings-section">
       <h3>Map</h3>
@@ -379,6 +394,8 @@
       var lowBatPct = document.getElementById('lowBatteryPct').value.trim();
       var mapPathMaxKm = document.getElementById('mapPathMaxKm').value.trim();
       var nodeIdChars = document.getElementById('nodeIdChars').value.trim();
+      var neighboursEnabled = document.getElementById('neighboursEnabled').checked;
+      var neighboursInterval = document.getElementById('neighboursInterval').value.trim();
 
       if (!host) { showStatus('Companion IP is required', true); return; }
 
@@ -429,7 +446,9 @@
         node_id_chars: nodeIdChars,
         ntfy_topic: ntfyTopic,
         ntfy_server: ntfyServer,
-        dashboard_url: dashboardUrl
+        dashboard_url: dashboardUrl,
+        neighbours_enabled: neighboursEnabled,
+        neighbours_interval: neighboursInterval
       };
       
       fetch('/api/settings', {
@@ -550,6 +569,8 @@
           document.getElementById('ntfyTopic').value = s.ntfy_topic;
           document.getElementById('ntfyServer').value = s.ntfy_server;
           document.getElementById('dashboardUrl').value = s.dashboard_url;
+          document.getElementById('neighboursEnabled').checked = s.neighbours_enabled;
+          document.getElementById('neighboursInterval').value = s.neighbours_interval;
 
           // Set placeholder text for host given type
           toggleType({value: s.companion_type});

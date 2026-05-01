@@ -8,6 +8,7 @@ from dateutil.relativedelta import relativedelta
 from typing import Dict, List
 import peewee
 from peewee import (
+    CompositeKey,
     Proxy,
     Model,
     FloatField,
@@ -52,6 +53,17 @@ class Measurement(BaseDbModel):
     pubkey = TextField(null=False, index=True)
     measurement_code = TextField(null=False, index=True)
     measurement_value = FloatField(null=False)
+
+
+class Neighbour(BaseDbModel):
+    timestamp = FloatField(null=False)
+    pubkey = TextField(null=False)
+    pubkey_remote = TextField(null=False)
+    snr = FloatField(null=False)
+
+    class Meta:
+        table_name = "neighbours"
+        primary_key = CompositeKey("timestamp", "pubkey", "pubkey_remote")
 
 
 class ActivityLog(BaseDbModel):
@@ -128,6 +140,7 @@ class RepeaterState(BaseDbModel):
     last_seen_epoch = FloatField(default=0)
     last_poll_ok = BooleanField(null=True, default=None)
     last_poll_timestamp = FloatField(null=False, default=0)
+    last_neighbour_poll = FloatField(null=False, default=0)
     temperature = FloatField(null=True, default=None)
     humidity = FloatField(null=True, default=None)
 
@@ -206,6 +219,7 @@ class DataStore:
                     NodeName,
                     RepeaterState,
                     AdvertNode,
+                    Neighbour,
                 ],
                 safe=True,
             )
@@ -670,3 +684,35 @@ class DataStore:
                 ActivityLog.delete().where(ActivityLog.timestamp < cutoff).execute()
         except Exception as e:
             print(f"[DataStore] Activity log prune error: {e}")
+
+    def save_neighbours(self, pubkey, neighbour_data):
+        # The neighbours data consists of lines of:
+        # {pubkey-prefix}:{timestamp}:{snr*4}
+        for neighbour in neighbour_data.split("\n"):
+            datum = neighbour.split(":")
+            if len(datum) == 3:
+                pubkey_remote, timestamp, snr = datum
+                try:
+                    snr = float(snr)
+                    if snr is not None:
+                        with db.connection_context():
+                            Neighbour.insert(
+                                timestamp=timestamp,
+                                pubkey=pubkey,
+                                pubkey_remote=pubkey_remote,
+                                snr=float(snr),
+                            ).on_conflict(
+                                conflict_target=[
+                                    Neighbour.timestamp,
+                                    Neighbour.pubkey,
+                                    Neighbour.pubkey_remote,
+                                ],
+                                preserve=[],
+                                update=[Neighbour.snr],
+                            ).execute()
+                except Exception as e:
+                    print(f"[DataStore] Neighbour upsert error: {e}")
+
+        self.last_neighbour_poll = time.time()
+        if self._db_path:
+            self.save()
