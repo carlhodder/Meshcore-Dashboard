@@ -56,6 +56,7 @@ class MeshcorePoller:
         self._pending_rx_paths: list = (
             []
         )  # [(ts, hops, path)] — recent RF paths for msg correlation
+        self._msg_drained = False
 
     def _lookup_contact_route(self, pubkey_prefix: str) -> tuple:
         """Fuzzy-match pubkey_prefix against _contact_routes. Returns (hops, path) or (-1, '')."""
@@ -102,6 +103,7 @@ class MeshcorePoller:
                 await asyncio.sleep(1)
                 continue
             try:
+                self._msg_drained = False
                 await self._connect_and_poll()
             except Exception as e:
                 logger.error(f"Poller error: {e}", exc_info=True)
@@ -203,7 +205,7 @@ class MeshcorePoller:
                 break
 
             if self._polling_enabled:
-                await self._refresh_contacts()
+                await self._refresh_contacts(silent=True)
                 stagger = self._cfg.stagger_delay_seconds
                 now_ts = time.time()
                 any_polled = False
@@ -245,11 +247,10 @@ class MeshcorePoller:
 
                 if any_polled:
                     await self._fetch_companion_telemetry()
-                await self._interruptible_sleep(10)
+                await self._interruptible_sleep(30)
             else:
                 logger.debug("Duty-cycle polling paused — skipping this cycle")
 
-        # Unsubscribe before disconnecting
         self._unsubscribe_messages()
 
         # Disconnect before reconnecting with new settings
@@ -438,6 +439,7 @@ class MeshcorePoller:
                     break  # NO_MORE_MSGS or ERROR
             if count:
                 logger.info(f"Drained {count} buffered message(s) from node")
+            self._msg_drained = True
         except Exception as e:
             logger.debug(f"Message drain: {e}")
 
@@ -466,7 +468,7 @@ class MeshcorePoller:
         self._rx_log_sub = None
         self._advert_sub = None
         self._telemetry_sub = None
-
+        
     async def _msg_poll_loop(self):
         """Periodically drain any messages the node has buffered (backup for subscriptions)."""
         while True:
@@ -501,6 +503,16 @@ class MeshcorePoller:
         except Exception as e:
             logger.error(f"Error dispatching message: {e}")
 
+    def __try_get_and_update_timestamp(self, pubkey, payload):
+        repeater = self.store.get(pubkey)
+        if self._msg_subscribed and repeater:
+            ts = payload.get("timestamp") or payload.get("sender_timestamp")
+            if ts:
+                self.store.update_repeater_clock(repeater["pubkey"], ts)
+                repeater = self.store.get(pubkey)
+                logger.info(f"[{repeater.get("name")}] Time offset s: {repeater.get("time_offset_seconds")}")
+
+
     async def _on_contact_msg(self, event):
         try:
             payload = event.payload if hasattr(event, "payload") else {}
@@ -508,6 +520,10 @@ class MeshcorePoller:
                 return
             text = payload.get("text", "")
             sender_pubkey = str(payload.get("pubkey_prefix", ""))
+
+            # If this matches a repeater then update the clock:
+            self.__try_get_and_update_timestamp(sender_pubkey, payload)
+                
             sender_name = self._resolve_contact_name(sender_pubkey)
             hops, path = self._extract_hops_path(payload)
             if hops > 0 and not path and sender_pubkey:
@@ -576,6 +592,10 @@ class MeshcorePoller:
                     payload.get("sender_pubkey", payload.get("sender", "")),
                 )
             )
+
+            # If this matches a repeater then update the clock:
+            self.__try_get_and_update_timestamp(sender_pubkey, payload)
+
             hops, path = self._extract_hops_path(payload)
             if hops > 0 and not path and sender_pubkey:
                 stored_hops, stored_path = self.store.get_route_by_prefix(sender_pubkey)
@@ -951,6 +971,9 @@ class MeshcorePoller:
                 return
             pubkey = str(payload.get("pubkey", payload.get("public_key", "")))
             name = self._resolve_contact_name(pubkey) if pubkey else ""
+            # If this matches a repeater then update the clock:
+            self.__try_get_and_update_timestamp(pubkey, payload)
+
             # Cache pubkey first byte → name so _on_rx_log can resolve node IDs
             if pubkey and len(pubkey) >= 2 and name and name != pubkey[:8]:
                 self._cache_node_name(pubkey[:2], name)
@@ -1138,7 +1161,7 @@ class MeshcorePoller:
 
     # --- Contacts ---
 
-    async def _refresh_contacts(self):
+    async def _refresh_contacts(self, silent=False):
         """Fetch contacts from companion to populate routing table."""
         try:
             result = await self.mc.commands.get_contacts()
@@ -1167,7 +1190,8 @@ class MeshcorePoller:
                 if pk and name and len(pk) >= 2:
                     self._cache_node_name(pk[:2], name)
 
-            logger.info(f"Loaded {len(self._contacts)} contacts from companion")
+            if not silent:
+                logger.info(f"Loaded {len(self._contacts)} contacts from companion")
         except Exception as e:
             logger.error(f"Contact refresh failed: {e}")
 
@@ -1301,7 +1325,7 @@ class MeshcorePoller:
         """
         i = 0
         while i < max(reattempts, 0) + 1:
-            success = func(*f_args, **f_kwargs)
+            success = await func(*f_args, **f_kwargs)
             if success:
                 return success
             else:
@@ -1317,9 +1341,10 @@ class MeshcorePoller:
 
         return False
 
-    async def _poll_repeater(self, contact, repeater_cfg):
+    async def _poll_repeater(self, contact, repeater_cfg, manual=False):
         pubkey = repeater_cfg["pubkey"]
         name = repeater_cfg["name"]
+        rep_state = self.store.get(pubkey)
 
         # Extract hop count and route path from contact
         # MeshCore library uses out_path_len / out_path (not hops/path)
@@ -1391,34 +1416,34 @@ class MeshcorePoller:
 
         # Login to repeater before requesting data
         admin_pass = repeater_cfg.get("admin_pass", "password")
-        success = self.__repeat_on_failure(
+        success = await self.__repeat_on_failure(
             self._login_to_repeater, [contact, name, admin_pass], reattempts=1
         )
         if success:
             await self._interruptible_sleep(1)
             if not self._running or self._needs_reconnect or self._stay_disconnected:
                 return
-            success = self.__repeat_on_failure(
+            success = await self.__repeat_on_failure(
                 self._request_status, [pubkey, name, contact]
             )
         if success:
             await self._interruptible_sleep(1)
             if not self._running or self._needs_reconnect or self._stay_disconnected:
                 return
-            success = self.__repeat_on_failure(
+            success = await self.__repeat_on_failure(
                 self._request_telemetry, [pubkey, name, contact]
             )
         # Get neighbours if needed
         if (
             success
             and self._cfg.neighbours_enabled
-            and time.time()
-            >= repeater_cfg.last_neighbour_poll + self._cfg.neighbours_interval
+            and (manual or time.time()
+            >= rep_state["last_neighbour_poll"] + self._cfg.neighbours_interval)
         ):
             await self._interruptible_sleep(1)
             if not self._running or self._needs_reconnect or self._stay_disconnected:
                 return
-            success = self.__repeat_on_failure(
+            success = await self.__repeat_on_failure(
                 self._request_neighbours, [pubkey, name, contact]
             )
 
@@ -1426,14 +1451,14 @@ class MeshcorePoller:
         if (
             success
             and self._cfg.clock_check_enabled
-            and time.time()
-            >= repeater_cfg.last_clock_poll + self._cfg.clock_check_hours * 60 * 60
+            and (manual or time.time()
+            >= rep_state["last_clock_poll"] + self._cfg.clock_check_hours * 60 * 60)
         ):
             await self._interruptible_sleep(1)
             if not self._running or self._needs_reconnect or self._stay_disconnected:
                 return
-            success = self.__repeat_on_failure(
-                self._request_clock(pubkey, name, contact)
+            success = await self.__repeat_on_failure(
+                self._request_clock, [pubkey, name, contact]
             )
 
         # Note: Success could be 'None' if required to abort between attempts due to running/reconnect/etc.
@@ -1448,9 +1473,9 @@ class MeshcorePoller:
         """Run a path discovery request to determine the actual route to a repeater.
         OR with configured_contact=False to save as a non-configured contact instead."""
         try:
-            result = await self.mc.commands.send_path_discovery(contact)
-            if result.type == EventType.ERROR:
-                logger.debug(f"[{name}] Path discovery send failed: {result.payload}")
+            result = await self.mc.commands.send_path_discovery_sync(contact)
+            if result == None:
+                logger.debug(f"[{name}] Path discovery send failed")
                 return
             # Wait up to 10s for the PATH_RESPONSE event
             response = await self.mc.wait_for_event(
@@ -1495,9 +1520,9 @@ class MeshcorePoller:
         """Apply a custom route path or reset to flood if empty."""
         try:
             if custom_path:
-                # Parse comma-separated hex bytes like "4d,3c,ee"
+                # Convert to bytes (fromhex ignores spaces) and back to string to clean.
                 path_bytes = bytes.fromhex(custom_path.replace(",", ""))
-                await self.mc.commands.change_contact_path(contact, path_bytes)
+                await self.mc.commands.change_contact_path(contact, path_bytes.hex())
                 logger.info(f"[{name}] Set custom path: {custom_path}")
             else:
                 await self.mc.commands.reset_path(bytes.fromhex(pubkey))
@@ -1619,27 +1644,31 @@ class MeshcorePoller:
     async def _request_neighbours(self, pubkey: str, name: str, contact):
         """Request neighbours and update the store with results."""
         try:
-            result = await self.mc.commands.req_neighbours_sync(contact, timeout=30)
-            if result == None:
-                logger.debug(f"[{name}] Neighbours request failed")
-                return False
+            contact = self._find_contact(pubkey)
+            if contact and contact.get("type") == 2:
+                result = await self.mc.commands.req_neighbours_sync(contact, timeout=30)
+                if result == None:
+                    logger.debug(f"[{name}] Neighbours request failed")
+                    return False
 
-            self.store.save_neighbours(pubkey, result)
-
-            return True
+                self.store.save_neighbours(pubkey, result["neighbours"])
+                return True
+            else:
+                logger.debug(f"[{name}] Neighbours only supported by repeater FW")
+                return True
         except Exception as e:
             logger.error(f"[{name}] Neighbours request error: {e}")
             return False
         
     async def _request_clock(self, pubkey: str, name: str, contact):
-        """Request internal clock and update the store with results."""
-        try:
-            result = await self.mc.commands.send_cmd(contact, "time")
+        """Request internal clock.
+        The subscribed message handler will update the repeater with the rx packet timestamp.
+        """
+        try:   
+            result = await self.mc.commands.send_cmd(contact, "clock")
             if result.type == EventType.ERROR:
                 logger.debug(f"[{name}] Clock/repeater time request failed")
-                return False
-
-            self.store.update_repeater_clock(pubkey, result.payload)
+                return False 
 
             return True
         except Exception as e:
@@ -1673,14 +1702,14 @@ class MeshcorePoller:
         if not self.mc:
             return {"ok": False, "error": "Not connected to companion device"}
 
-        contact, repeater_cfg, error = self.get_repeater_contact_and_config(pubkey)
+        contact, repeater_cfg, error = await self.get_repeater_contact_and_config(pubkey)
         if error:
             return {"ok": False, "error": error}
 
         name = repeater_cfg.get("name", pubkey[:8])
         start = time.monotonic()
         try:
-            await self._poll_repeater(contact, repeater_cfg)
+            await self._poll_repeater(contact, repeater_cfg, manual=True)
             latency_ms = int((time.monotonic() - start) * 1000)
             logger.info(f"[{name}] Manual refresh completed in {latency_ms}ms")
             return {"ok": True, "latency_ms": latency_ms}
@@ -1693,7 +1722,7 @@ class MeshcorePoller:
         if not self.mc:
             return {"ok": False, "error": "Not connected to companion device"}
 
-        contact, repeater_cfg, error = self.get_repeater_contact_and_config(pubkey)
+        contact, repeater_cfg, error = await self.get_repeater_contact_and_config(pubkey)
         if error:
             return {"ok": False, "error": error}
 
@@ -1705,6 +1734,7 @@ class MeshcorePoller:
                 return {"ok": False, "error": f"Failed to log in to {name}"}
             result = await self.mc.commands.send_cmd(contact, "advert")
             if result.type == EventType.ERROR:
+                logger.error(f"[{name}] Failed to send advert after login: {result.payload}")
                 return {
                     "ok": False,
                     "error": f"Failed to send advert after login: {result.payload}",
@@ -1721,7 +1751,7 @@ class MeshcorePoller:
         if not self.mc:
             return {"ok": False, "error": "Not connected to companion device"}
 
-        contact, repeater_cfg, error = self.get_repeater_contact_and_config(pubkey)
+        contact, repeater_cfg, error = await self.get_repeater_contact_and_config(pubkey)
         if error:
             return {"ok": False, "error": error}
 
@@ -1736,9 +1766,10 @@ class MeshcorePoller:
                 contact, f"time {int(time.time() + 0.5)}"
             )
             if result.type == EventType.ERROR:
+                logger.error(f"[{name}] Failed to set clock after login: {result.payload}")
                 return {
                     "ok": False,
-                    "error": f"Failed to set clock after login: {result.payload}",
+                    "error": f"Failed to set clock after login",
                 }
             logger.info(f"[{name}] Clock time set")
             self._log_event("clock_set", name=name, pubkey=pubkey)

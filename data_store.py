@@ -707,15 +707,11 @@ class DataStore:
 
     def update_repeater_clock(self, pubkey, timestamp):
         try:
-            time_offset_seconds = round(
-                (
-                    datetime.fromtimestamp(timestamp) - time.time()
-                ).total_seconds()
-            )
+            time_offset_seconds = round(timestamp - time.time())
             with self._lock:
                 if pubkey in self._repeaters:
                     self._repeaters[pubkey].time = timestamp
-                    self._repeaters[pubkey].time = time_offset_seconds
+                    self._repeaters[pubkey].time_offset_seconds = time_offset_seconds
                     self._repeaters[pubkey].last_clock_poll = time.time()
                     if self._db_path:
                         with db.connection_context():
@@ -725,12 +721,18 @@ class DataStore:
         
 
     def save_neighbours(self, pubkey, neighbour_data):
-        # The neighbours data consists of lines of:
-        # {pubkey-prefix}:{timestamp}:{snr*4}
-        for neighbour in neighbour_data.split("\n"):
-            datum = neighbour.split(":")
-            if len(datum) == 3:
-                pubkey_remote, timestamp, snr = datum
+        # The neighbours data consists of a dict of:
+        # pubkey (short)
+        # secs_ago
+        # snr
+        with self._lock:
+            ts_start = time.time()
+            for neighbour in neighbour_data:
+                pubkey_remote = neighbour["pubkey"]
+                # These should be from adverts so grouping by 10s blocks should be more than accurate enough
+                # but suppress jitter from timings.
+                timestamp = round((ts_start - neighbour["secs_ago"]) / 10) * 10
+                snr = neighbour["snr"]
                 try:
                     snr = float(snr)
                     if snr is not None:
@@ -739,20 +741,13 @@ class DataStore:
                                 timestamp=timestamp,
                                 pubkey=pubkey,
                                 pubkey_remote=pubkey_remote,
-                                snr=float(snr),
-                            ).on_conflict(
-                                conflict_target=[
-                                    Neighbour.timestamp,
-                                    Neighbour.pubkey,
-                                    Neighbour.pubkey_remote,
-                                ],
-                                preserve=[],
-                                update=[Neighbour.snr],
-                            ).execute()
+                                snr=snr,
+                            ).on_conflict_ignore().execute()
                 except Exception as e:
                     print(f"[DataStore] Neighbour upsert error: {e}")
 
-        self.last_neighbour_poll = time.time()
-        if self._db_path:
-            with db.connection_context():
-                self.save()
+            if pubkey in self._repeaters:
+                self._repeaters[pubkey].last_neighbour_poll = ts_start
+                if self._db_path:
+                    with db.connection_context():
+                        self._repeaters[pubkey].save()

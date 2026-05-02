@@ -97,6 +97,13 @@ class UserConfigurables(BaseModel):
         # If the value is less than poll seconds it will be polled at that rate, but
         # this isn't an error so we'll just ignore smaller values.
         return value
+    
+    @field_validator("clock_check_hours", mode="after")
+    @classmethod
+    def clock_check_hours_is_valid(cls, value) -> int:
+        if value <= 0:
+            raise ValueError("clock_check_hours must be >= 1 (1 hr)")
+        return value
 
 
 class Config(UserConfigurables):

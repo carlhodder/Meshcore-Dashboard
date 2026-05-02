@@ -201,7 +201,7 @@ function updateCardElement(card, r, prefixToName, now, lowBatPct) {
 
   var timeErrValEl = card.querySelector(".val-time-error");
   if (timeErrValEl) {
-    if (r.time_offset_seconds != null && Math.abs(r.time_offset_seconds) > 30) {
+    if (r.time_offset_seconds != null && Math.abs(r.time_offset_seconds) >= 30) {
       timeErrValEl.innerHTML =
         (r.time_offset_seconds > 0 ? "+" : "") +
         r.time_offset_seconds +
