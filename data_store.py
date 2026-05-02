@@ -142,6 +142,7 @@ class RepeaterState(BaseDbModel):
     last_poll_timestamp = FloatField(null=False, default=0)
     last_neighbour_poll = FloatField(null=False, default=0)
     last_clock_poll = FloatField(null=False, default=0)
+    last_fw_poll = FloatField(null=False, default=0)
     temperature = FloatField(null=True, default=None)
     humidity = FloatField(null=True, default=None)
 
@@ -747,3 +748,13 @@ class DataStore:
                 if self._db_path:
                     with db.connection_context():
                         self._repeaters[pubkey].save()
+
+    def save_version_info(self, pubkey, version_info):
+        with self._lock:
+            if pubkey in self._repeaters:
+                self._repeaters[pubkey].fw_version = version_info
+                self._repeaters[pubkey].last_fw_poll = time.time()
+                if self._db_path:
+                    with db.connection_context():
+                        self._repeaters[pubkey].save()
+        
