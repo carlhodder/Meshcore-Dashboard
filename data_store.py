@@ -486,17 +486,13 @@ class DataStore:
                     )
                     .order_by(Measurement.timestamp)
                 )
-
-                # Now reformat to what the charter expects, also round timestamp so they're all
-                # grouped by 5 minute blocks.
-                output_format = OrderedDict()
+                # Now reformat to what the charter expects, and smooth into 1 minute blocks
+                output_format = {}
                 data_keys = set()
                 for meas in query:
                     if meas.measurement_code in RepeaterState.metric_labels.keys():
                         data_keys.add(meas.measurement_code)
-                        output_format.setdefault(round(meas.timestamp / 300) * 300, {})[
-                            meas.measurement_code
-                        ] = meas.measurement_value
+                        output_format.setdefault(round(meas.timestamp / 60)*60, {}).setdefault(meas.measurement_code, []).append(meas.measurement_value)
                 items = {
                     k: v
                     for k, v in RepeaterState.metric_labels.items()
@@ -506,7 +502,7 @@ class DataStore:
                     "items": items,
                     "defaults": RepeaterState.default_metrics,
                     "data": [
-                        {"timestamp": k, **val} for k, val in output_format.items()
+                        {"timestamp": k, **{ki: sum(vi)/len(vi) for ki,vi in v.items()}} for k,v in sorted(output_format.items())
                     ],
                 }
         except Exception as e:

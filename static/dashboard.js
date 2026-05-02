@@ -746,19 +746,7 @@ function renderHistoryChart() {
   var period = periodSelect ? periodSelect.value : "day";
 
   var labels = data.map(function (d) {
-    var dt = new Date(d.timestamp * 1000);
-    if (period === "day") {
-      return dt.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } else {
-      return (
-        dt.toLocaleDateString([], { month: "short", day: "numeric" }) +
-        " " +
-        dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      );
-    }
+    return new Date(d.timestamp * 1000);
   });
 
   // Get selected metrics
@@ -836,7 +824,15 @@ function renderHistoryChart() {
       },
       scales: {
         x: {
-          ticks: { color: "#64748b", maxTicksLimit: 12 },
+          type: 'time',
+          ticks: { 
+            color: "#64748b", 
+            unit:   periodSelect.value == "day" ? 'hours' : "days", 
+            major: {
+              enabled: true
+            },
+            font: (context) => context.tick && context.tick.major ? { weight: 'bold' } : {}
+          },
           grid: { color: "#1e293b" },
         },
         yBatt: {
