@@ -107,8 +107,8 @@
       <h3>Polling Timing</h3>
       <div class="settings-row">
         <div class="settings-field">
-          <label for="pollInterval">Poll Cycle (seconds)</label>
-          <input type="number" id="pollInterval" placeholder="3600" min="30">
+          <label for="pollInterval">Poll Cycle (hours)</label>
+          <input type="number" id="pollInterval" placeholder="2" min="1">
         </div>
         <div class="settings-field">
           <label for="staggerDelay">Stagger Delay (seconds)</label>
@@ -130,8 +130,8 @@
           <label for="neighboursEnabled" style="margin:0; padding:0">Enable</label>
         </div>
         <div class="settings-field">
-          <label for="neighboursInterval">Interval (seconds)</label>
-          <input type="number" id="neighboursInterval" placeholder="10800">
+          <label for="neighboursInterval">Interval (hours)</label>
+          <input type="number" id="neighboursInterval" placeholder="6">
         </div>
       </div>
     </div>
@@ -147,6 +147,21 @@
         <div class="settings-field">
           <label for="clockCheckHours">Interval (hours)</label>
           <input type="number" id="clockCheckHours" placeholder="24">
+        </div>
+      </div>
+    </div>
+
+    <!-- Firmware Version -->
+    <div class="settings-section">
+      <h3>Device Firmware Version</h3>
+      <div class="settings-row">
+        <div class="settings-field" style="flex-direction:row; align-items:center; gap:0.5rem; justify-content:flex-start">
+          <input type="checkbox" id="firmwareGetEnabled">
+          <label for="firmwareGetEnabled" style="margin:0; padding:0">Enable</label>
+        </div>
+        <div class="settings-field">
+          <label for="firmwareGetDays">Interval (days)</label>
+          <input type="number" id="firmwareGetDays" placeholder="7">
         </div>
       </div>
     </div>
@@ -423,6 +438,8 @@
       var neighboursInterval = document.getElementById('neighboursInterval').value.trim();
       var clockCheckEnabled = document.getElementById('clockCheckEnabled').checked;
       var clockCheckHours = document.getElementById('clockCheckHours').value.trim();
+      var firmwareGetEnabled = document.getElementById('firmwareGetEnabled').checked;
+      var firmwareGetDays = document.getElementById('firmwareGetDays').value.trim();
 
       if (!host) { showStatus('Companion IP is required', true); return; }
 
@@ -470,7 +487,7 @@
         companion_port: port,
         repeaters: repeaters,
         channels: channels,
-        poll_interval_seconds: pollInterval,
+        poll_interval_hours: pollInterval,
         stagger_delay_seconds: staggerDelay,
         low_battery_percent: lowBatPct,
         map_path_max_km: mapPathMaxKm,
@@ -479,9 +496,11 @@
         ntfy_server: ntfyServer,
         dashboard_url: dashboardUrl,
         neighbours_enabled: neighboursEnabled,
-        neighbours_interval: neighboursInterval,
+        neighbours_check_hours: neighboursInterval,
         clock_check_enabled: clockCheckEnabled,
-        clock_check_hours: clockCheckHours
+        clock_check_hours: clockCheckHours,
+        firmware_get_enabled: firmwareGetEnabled,
+        firmware_get_days: firmwareGetDays
       };
       
       fetch('/api/settings', {
@@ -594,7 +613,7 @@
           document.querySelector(`input[name="companionType"][value="${s.companion_type}"]`).checked = true;
           document.getElementById('companionHost').value = s.companion_host;
           document.getElementById('companionPort').value = s.companion_port;
-          document.getElementById('pollInterval').value = s.poll_interval_seconds;
+          document.getElementById('pollInterval').value = s.poll_interval_hours;
           document.getElementById('staggerDelay').value = s.stagger_delay_seconds;
           document.getElementById('lowBatteryPct').value = s.low_battery_percent;
           document.getElementById('mapPathMaxKm').value = s.map_path_max_km;
@@ -603,9 +622,11 @@
           document.getElementById('ntfyServer').value = s.ntfy_server;
           document.getElementById('dashboardUrl').value = s.dashboard_url;
           document.getElementById('neighboursEnabled').checked = s.neighbours_enabled;
-          document.getElementById('neighboursInterval').value = s.neighbours_interval;
+          document.getElementById('neighboursInterval').value = s.neighbours_check_hours;
           document.getElementById('clockCheckEnabled').checked = s.clock_check_enabled;
           document.getElementById('clockCheckHours').value = s.clock_check_hours;
+          document.getElementById('firmwareGetEnabled').checked = s.firmware_get_enabled;
+          document.getElementById('firmwareGetDays').value = s.firmware_get_days;
 
           // Set placeholder text for host given type
           toggleType({value: s.companion_type});

@@ -193,7 +193,7 @@ class MeshcorePoller:
         ):
             # Re-read config each cycle for dynamic updates
             repeaters = self._cfg.repeaters
-            poll_interval = self._cfg.poll_interval_seconds
+            poll_interval = self._cfg.poll_interval_hours * 3600
 
             # Check if companion IP changed
             new_host = self._cfg.companion_host
@@ -468,7 +468,7 @@ class MeshcorePoller:
         self._rx_log_sub = None
         self._advert_sub = None
         self._telemetry_sub = None
-        
+
     async def _msg_poll_loop(self):
         """Periodically drain any messages the node has buffered (backup for subscriptions)."""
         while True:
@@ -510,8 +510,9 @@ class MeshcorePoller:
             if ts:
                 self.store.update_repeater_clock(repeater["pubkey"], ts)
                 repeater = self.store.get(pubkey)
-                logger.info(f"[{repeater.get("name")}] Time offset s: {repeater.get("time_offset_seconds")}")
-
+                logger.info(
+                    f"[{repeater.get("name")}] Time offset s: {repeater.get("time_offset_seconds")}"
+                )
 
     async def _on_contact_msg(self, event):
         try:
@@ -523,7 +524,7 @@ class MeshcorePoller:
 
             # If this matches a repeater then update the clock:
             self.__try_get_and_update_timestamp(sender_pubkey, payload)
-                
+
             sender_name = self._resolve_contact_name(sender_pubkey)
             hops, path = self._extract_hops_path(payload)
             if hops > 0 and not path and sender_pubkey:
@@ -1437,8 +1438,12 @@ class MeshcorePoller:
         if (
             success
             and self._cfg.neighbours_enabled
-            and (manual or time.time()
-            >= rep_state["last_neighbour_poll"] + self._cfg.neighbours_interval)
+            and (
+                manual
+                or time.time()
+                >= rep_state["last_neighbour_poll"]
+                + self._cfg.neighbours_check_hours * 3600
+            )
         ):
             await self._interruptible_sleep(1)
             if not self._running or self._needs_reconnect or self._stay_disconnected:
@@ -1451,8 +1456,11 @@ class MeshcorePoller:
         if (
             success
             and self._cfg.clock_check_enabled
-            and (manual or time.time()
-            >= rep_state["last_clock_poll"] + self._cfg.clock_check_hours * 60 * 60)
+            and (
+                manual
+                or time.time()
+                >= rep_state["last_clock_poll"] + self._cfg.clock_check_hours * 60 * 60
+            )
         ):
             await self._interruptible_sleep(1)
             if not self._running or self._needs_reconnect or self._stay_disconnected:
@@ -1659,22 +1667,21 @@ class MeshcorePoller:
         except Exception as e:
             logger.error(f"[{name}] Neighbours request error: {e}")
             return False
-        
+
     async def _request_clock(self, pubkey: str, name: str, contact):
         """Request internal clock.
         The subscribed message handler will update the repeater with the rx packet timestamp.
         """
-        try:   
+        try:
             result = await self.mc.commands.send_cmd(contact, "clock")
             if result.type == EventType.ERROR:
                 logger.debug(f"[{name}] Clock/repeater time request failed")
-                return False 
+                return False
 
             return True
         except Exception as e:
             logger.error(f"[{name}] Clock/repeater time request error: {e}")
             return False
-
 
     async def get_repeater_contact_and_config(self, pubkey: str) -> tuple:
         contact = self._find_contact(pubkey)
@@ -1702,7 +1709,9 @@ class MeshcorePoller:
         if not self.mc:
             return {"ok": False, "error": "Not connected to companion device"}
 
-        contact, repeater_cfg, error = await self.get_repeater_contact_and_config(pubkey)
+        contact, repeater_cfg, error = await self.get_repeater_contact_and_config(
+            pubkey
+        )
         if error:
             return {"ok": False, "error": error}
 
@@ -1722,7 +1731,9 @@ class MeshcorePoller:
         if not self.mc:
             return {"ok": False, "error": "Not connected to companion device"}
 
-        contact, repeater_cfg, error = await self.get_repeater_contact_and_config(pubkey)
+        contact, repeater_cfg, error = await self.get_repeater_contact_and_config(
+            pubkey
+        )
         if error:
             return {"ok": False, "error": error}
 
@@ -1734,7 +1745,9 @@ class MeshcorePoller:
                 return {"ok": False, "error": f"Failed to log in to {name}"}
             result = await self.mc.commands.send_cmd(contact, "advert")
             if result.type == EventType.ERROR:
-                logger.error(f"[{name}] Failed to send advert after login: {result.payload}")
+                logger.error(
+                    f"[{name}] Failed to send advert after login: {result.payload}"
+                )
                 return {
                     "ok": False,
                     "error": f"Failed to send advert after login: {result.payload}",
@@ -1751,7 +1764,9 @@ class MeshcorePoller:
         if not self.mc:
             return {"ok": False, "error": "Not connected to companion device"}
 
-        contact, repeater_cfg, error = await self.get_repeater_contact_and_config(pubkey)
+        contact, repeater_cfg, error = await self.get_repeater_contact_and_config(
+            pubkey
+        )
         if error:
             return {"ok": False, "error": error}
 
@@ -1766,7 +1781,9 @@ class MeshcorePoller:
                 contact, f"time {int(time.time() + 0.5)}"
             )
             if result.type == EventType.ERROR:
-                logger.error(f"[{name}] Failed to set clock after login: {result.payload}")
+                logger.error(
+                    f"[{name}] Failed to set clock after login: {result.payload}"
+                )
                 return {
                     "ok": False,
                     "error": f"Failed to set clock after login",
