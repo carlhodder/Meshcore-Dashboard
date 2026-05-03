@@ -103,7 +103,8 @@ class MeshcorePoller:
                 continue
             try:
                 self._msg_drained = False
-                await self._connect_and_poll()
+                await self._connect()
+                await self._poll()
             except Exception as e:
                 logger.error(f"Poller error: {e}", exc_info=True)
                 if self.mc:
@@ -148,8 +149,8 @@ class MeshcorePoller:
         state = "enabled" if self._polling_enabled else "disabled"
         logger.info(f"Duty-cycle polling {state}")
         return self._polling_enabled
-
-    async def _connect_and_poll(self):
+    
+    async def _connect(self):
         host = self._cfg.companion_host
         port = self._cfg.companion_port
         self._current_host = host
@@ -187,6 +188,8 @@ class MeshcorePoller:
         await self._fetch_companion_telemetry()
         await self._subscribe_messages()
 
+
+    async def _poll(self):
         while (
             self._running and not self._needs_reconnect and not self._stay_disconnected
         ):
@@ -413,12 +416,11 @@ class MeshcorePoller:
         
         # Try to enable auto-fetching (some firmware versions support this)
         try:
-            await self.mc.commands.start_auto_message_fetching()
             logger.info("Auto message fetching started")
-        except Exception:
-            logger.debug("start_auto_message_fetching not available")
+            await self.mc.start_auto_message_fetching()
+        except Exception as e:
+            logger.error("start_auto_message_fetching not available")
 
-        
 
     async def _drain_messages(self):
         """Pull all messages currently buffered on the node."""
@@ -438,8 +440,9 @@ class MeshcorePoller:
                 logger.info(f"Drained {count} buffered message(s) from node")
             self._msg_drained = True
         except Exception as e:
-            logger.debug(f"Message drain: {e}")
+            logger.error(f"Message drain: {e}")
 
+  
     def _unsubscribe_messages(self):
         for sub in (
             self._msg_sub_contact,
@@ -462,6 +465,7 @@ class MeshcorePoller:
         self._rx_log_sub = None
         self._advert_sub = None
         self._telemetry_sub = None
+
 
     async def _dispatch_message(self, event):
         """Handle a message event from either subscription or polling."""
@@ -1291,7 +1295,7 @@ class MeshcorePoller:
             remaining -= 0.5
 
     async def __repeat_on_failure(
-        self, func, f_args, f_kwargs={}, reattempts=2, delay_s=1
+        self, func, f_args, f_kwargs={}, reattempts=2, delay_s=5
     ):
         """
         Repeat a function call until a truthy result is returned, else return False.
@@ -1322,7 +1326,7 @@ class MeshcorePoller:
 
         # Extract hop count and route path from contact
         # MeshCore library uses out_path_len / out_path (not hops/path)
-        # out_path_len: -1 = flood routing, 0 = direct (1 hop), N = N intermediate nodes
+        # out_path_len: -1 = flood routing, 0 = direct (1 hop), N = N +intermediate nodes
         hops = 0
         route_path = ""
         if isinstance(contact, dict):
@@ -1394,17 +1398,17 @@ class MeshcorePoller:
             self._login_to_repeater, [contact, name, admin_pass], reattempts=1
         )
         if success:
-            await self._interruptible_sleep(1)
+            #await self._interruptible_sleep(5)
             if not self._running or self._needs_reconnect or self._stay_disconnected:
                 return
-            success = await self.__repeat_on_failure(
+            await self.__repeat_on_failure(
                 self._request_status, [pubkey, name, contact]
             )
         if success:
-            await self._interruptible_sleep(1)
+            #await self._interruptible_sleep(5)
             if not self._running or self._needs_reconnect or self._stay_disconnected:
                 return
-            success = await self.__repeat_on_failure(
+            await self.__repeat_on_failure(
                 self._request_telemetry, [pubkey, name, contact]
             )
         # Get neighbours if needed
@@ -1418,28 +1422,11 @@ class MeshcorePoller:
                 + self._cfg.neighbours_check_hours * 3600
             )
         ):
-            await self._interruptible_sleep(1)
+            #await self._interruptible_sleep(5)
             if not self._running or self._needs_reconnect or self._stay_disconnected:
                 return
-            success = await self.__repeat_on_failure(
+            await self.__repeat_on_failure(
                 self._request_neighbours, [pubkey, name, contact]
-            )
-
-        # Get clock if needed
-        if (
-            success
-            and self._cfg.clock_check_enabled
-            and (
-                manual
-                or time.time()
-                >= rep_state["last_clock_poll"] + self._cfg.clock_check_hours * 60 * 60
-            )
-        ):
-            await self._interruptible_sleep(1)
-            if not self._running or self._needs_reconnect or self._stay_disconnected:
-                return
-            success = await self.__repeat_on_failure(
-                self._request_clock, [pubkey, name, contact]
             )
         # Get FW if needed
         if (
@@ -1451,13 +1438,29 @@ class MeshcorePoller:
                 >= rep_state["last_fw_poll"] + self._cfg.firmware_get_days * 60 * 60 * 24
             )
         ):
-            await self._interruptible_sleep(1)
             if not self._running or self._needs_reconnect or self._stay_disconnected:
                 return
-            success = await self.__repeat_on_failure(
+            await self.__repeat_on_failure(
                 self._request_version, [pubkey, name, contact]
             )
-
+        # Get clock if needed 
+        # (Do this last as we can lift the timestamp from the FW request and avoid a separate query)
+        if (
+            success
+            and self._cfg.clock_check_enabled
+            and (
+                manual
+                or time.time()
+                >= rep_state["last_clock_poll"] + self._cfg.clock_check_hours * 60 * 60
+            )
+        ):
+            #await self._interruptible_sleep(5)
+            if not self._running or self._needs_reconnect or self._stay_disconnected:
+                return
+            await self.__repeat_on_failure(
+                self._request_clock, [pubkey, name, contact]
+            )
+        
         # Note: Success could be 'None' if required to abort between attempts due to running/reconnect/etc.
         if success is False:
             logger.debug("Maximum reattempts exceeded, aborting")
@@ -1641,7 +1644,6 @@ class MeshcorePoller:
     async def _request_neighbours(self, pubkey: str, name: str, contact):
         """Request neighbours and update the store with results."""
         try:
-            contact = self._find_contact(pubkey)
             if contact and contact.get("type") == 2:
                 result = await self.mc.commands.req_neighbours_sync(contact, timeout=30)
                 if result == None:
@@ -1652,46 +1654,84 @@ class MeshcorePoller:
                 return True
             else:
                 logger.debug(f"[{name}] Neighbours only supported by repeater FW")
-                return True
+            return True
         except Exception as e:
             logger.error(f"[{name}] Neighbours request error: {e}")
             return False
 
     async def _request_clock(self, pubkey: str, name: str, contact):
         """Request internal clock.
-        The subscribed message handler will update the repeater with the rx packet timestamp.
+        NOTE: Packets received that have timestamp/sender_timestamp also update this value so this is probably
+        not called as frequently as expected.
+        Also we just rely on the global message received handler to use the timestamp on the rx packet to update.
         """
         try:
-            result = await self.mc.commands.send_cmd(contact, "clock")
-            if result.type == EventType.ERROR:
+            async with self.mc.commands._mesh_request_lock:
+                result = await self.mc.commands.send_cmd(contact, "clock")
+
+                if result.type == EventType.ERROR:
+                    logger.debug(f"[{name}] Clock/repeater time request failed")
+                    return False
+
+                result = await self.mc.dispatcher.wait_for_event(
+                    EventType.CONTACT_MSG_RECV,
+                    attribute_filters={"pubkey_prefix": pubkey[:12]},
+                    timeout=20,
+                )
+
+            if result is None:
                 logger.debug(f"[{name}] Clock/repeater time request failed")
                 return False
-
+            
             return True
         except Exception as e:
             logger.error(f"[{name}] Clock/repeater time request error: {e}")
             return False
         
+            
+    async def _sync_request_remote_cmd(self, pubkey: str, command: str, validator_func, contact, timeout=15):
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+
+        def on_event(event_data):
+            if future.done():
+                return
+            # Use the provided callback to check the data
+            # If it returns True, we've found our target message and can return.
+            if validator_func is None or validator_func(event_data):
+                loop.call_soon_threadsafe(future.set_result, event_data)
+
+        sub = self.mc.subscribe(EventType.CONTACT_MSG_RECV, on_event, attribute_filters={"pubkey_prefix": pubkey[:12]})
+        try:
+            async with self.mc.commands._mesh_request_lock:
+                await self.mc.commands.send_cmd(contact, command)
+                result_data = await asyncio.wait_for(future, timeout=timeout)
+            return result_data
+            
+        except asyncio.TimeoutError:
+            if not future.done():
+                future.cancel()
+            return None 
+            
+        finally:
+            # 5. Clean up the subscriber
+            self.mc.unsubscribe(sub)
+        
+        
     async def _request_version(self, pubkey: str, name: str, contact):
         """Request version / fw info
         """
         try:
-            sub = None
-            async def record_version(event):
-                if event.type == EventType.CONTACT_MSG_RECV and "text" in event.payload and pubkey.startswith(event.payload.get("pubkey_prefix")):
-                    self.store.save_version_info(pubkey, event.payload["text"])
-                    logger.debug(f"[{name}] Firmware version is {event.payload["text"]}")
-                self.mc.unsubscribe(sub)
+            def validator(event):
+                return event.type == EventType.CONTACT_MSG_RECV and "text" in event.payload and event.payload["text"].startswith("v")
 
-            sub = self.mc.subscribe(EventType.CONTACT_MSG_RECV, record_version)
-            result = await self.mc.commands.send_cmd(contact, "ver")
-            if result.type == EventType.ERROR:
+            result = await self._sync_request_remote_cmd(pubkey, "ver", validator, contact)
+            if result is None:
                 logger.debug(f"[{name}] Firmware version request failed")
                 return False
             
-            # I don't know why but the subscription mechanism doesn't start back up unless I give things a kick:
-            event = await self.mc.commands.get_msg()
-            await self.mc.dispatcher.dispatch(event)
+            self.store.save_version_info(pubkey, result.payload["text"])
+            logger.debug(f"[{name}] Firmware version is {result.payload["text"]}")
 
             return True
         except Exception as e:
