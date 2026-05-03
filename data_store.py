@@ -18,7 +18,6 @@ from peewee import (
     AutoField,
     SQL,
     fn,
-    Window
 )
 from playhouse.migrate import SqliteMigrator, migrate
 from playhouse.shortcuts import model_to_dict
@@ -495,7 +494,11 @@ class DataStore:
                 for meas in query:
                     if meas.measurement_code in RepeaterState.metric_labels.keys():
                         data_keys.add(meas.measurement_code)
-                        output_format.setdefault(round(meas.timestamp / 60)*60, {}).setdefault(meas.measurement_code, []).append(meas.measurement_value)
+                        output_format.setdefault(
+                            round(meas.timestamp / 60) * 60, {}
+                        ).setdefault(meas.measurement_code, []).append(
+                            meas.measurement_value
+                        )
                 items = {
                     k: v
                     for k, v in RepeaterState.metric_labels.items()
@@ -505,7 +508,11 @@ class DataStore:
                     "items": items,
                     "defaults": RepeaterState.default_metrics,
                     "data": [
-                        {"timestamp": k, **{ki: sum(vi)/len(vi) for ki,vi in v.items()}} for k,v in sorted(output_format.items())
+                        {
+                            "timestamp": k,
+                            **{ki: sum(vi) / len(vi) for ki, vi in v.items()},
+                        }
+                        for k, v in sorted(output_format.items())
                     ],
                 }
         except Exception as e:
@@ -717,7 +724,6 @@ class DataStore:
                             self._repeaters[pubkey].save()
         except Exception as e:
             print(f"[DataStore] Repeater time update error: {e}")
-        
 
     def save_neighbours(self, pubkey, neighbour_data):
         # The neighbours data consists of a dict of:
@@ -754,19 +760,31 @@ class DataStore:
     def get_most_recent_neighbours(self):
         try:
             with db.connection_context():
-                subquery = (
-                    Neighbour.select(Neighbour.pubkey, Neighbour.pubkey_remote, Neighbour.timestamp, Neighbour.snr, 
-                        fn.ROW_NUMBER().over(
-                            partition_by=[Neighbour.pubkey, Neighbour.pubkey_remote], 
-                                order_by=[Neighbour.timestamp.desc()]
-                            ).alias('row_rank')
-                        ).alias("top_n_subq")
+                subquery = Neighbour.select(
+                    Neighbour.pubkey,
+                    Neighbour.pubkey_remote,
+                    Neighbour.timestamp,
+                    Neighbour.snr,
+                    fn.ROW_NUMBER()
+                    .over(
+                        partition_by=[Neighbour.pubkey, Neighbour.pubkey_remote],
+                        order_by=[Neighbour.timestamp.desc()],
+                    )
+                    .alias("row_rank"),
+                ).alias("top_n_subq")
+                query = (
+                    Neighbour.select(
+                        subquery.c.pubkey,
+                        subquery.c.pubkey_remote,
+                        subquery.c.timestamp,
+                        subquery.c.snr,
+                    )
+                    .from_(subquery)
+                    .where(subquery.c.row_rank == 1)
                 )
-                query = Neighbour.select(subquery.c.pubkey, subquery.c.pubkey_remote, subquery.c.timestamp).from_(subquery).where(subquery.c.row_rank == 1)
-                return list(query.dicts())            
+                return list(query.dicts())
         except Exception as e:
             print(f"[DataStore] Neighbour retrieve error: {e}")
-
 
     def save_version_info(self, pubkey, version_info):
         with self._lock:
@@ -776,4 +794,3 @@ class DataStore:
                 if self._db_path:
                     with db.connection_context():
                         self._repeaters[pubkey].save()
-        

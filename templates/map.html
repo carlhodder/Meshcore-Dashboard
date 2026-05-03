@@ -117,6 +117,25 @@
       font-family: inherit; transition: color 0.2s, border-color 0.2s; white-space: nowrap; }
     .map-paths-btn:hover { color: #34d399; border-color: #34d399; }
     .map-paths-btn.active { color: #34d399; border-color: #34d399; background: rgba(52,211,153,0.1); }
+    .map-neighbours-btn { background: rgba(15, 23, 42, 0.9); border: 1px solid #334155; color: #94a3b8;
+      border-radius: 8px; padding: 0.35rem 0.75rem; font-size: 0.78rem; cursor: pointer;
+      font-family: inherit; transition: color 0.2s, border-color 0.2s; white-space: nowrap; }
+    .map-neighbours-btn:hover { color: #22d3ee; border-color: #22d3ee; }
+    .map-neighbours-btn.active { color: #22d3ee; border-color: #22d3ee; background: rgba(34,211,238,0.1); }
+    /* SNR midpoint label on neighbour lines */
+    .snr-label {
+      background: rgba(15, 23, 42, 0.85) !important;
+      border: 1px solid #22d3ee !important;
+      border-radius: 4px !important;
+      color: #22d3ee !important;
+      font-size: 0.68rem !important;
+      font-weight: 600 !important;
+      padding: 1px 4px !important;
+      white-space: nowrap !important;
+      pointer-events: none !important;
+      box-shadow: none !important;
+    }
+    .snr-label::before { display: none !important; }
     .map-sethome-btn.picking {
       color: #facc15;
       border-color: #facc15;
@@ -271,6 +290,8 @@
       <div class="legend-row"><div class="legend-dot" style="background:#f59e0b;border-radius:2px"></div> Shared segment</div>
       <div class="legend-row" style="font-size:0.68rem;color:#64748b;margin-top:0.25rem;">Msg paths layer</div>
       <div class="legend-row"><div class="legend-dot" style="background:#a78bfa;border-radius:2px"></div> Message path</div>
+      <div class="legend-row" style="font-size:0.68rem;color:#64748b;margin-top:0.25rem;">Neighbours layer</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#22d3ee;border-radius:2px"></div> Neighbour link (SNR)</div>
     </div>
 
     <!-- Top-right button bar -->
@@ -279,6 +300,7 @@
       <button class="map-contacts-btn" id="contactsBtn" onclick="toggleAllContacts()">&#9788; All Contacts</button>
       <button class="map-paths-btn" id="pathsBtn" onclick="togglePaths()">&#8627; Paths</button>
       <button class="map-paths-btn" id="msgPathsBtn" onclick="toggleMsgPaths()">&#9993; Msg Paths</button>
+      <button class="map-neighbours-btn" id="neighboursBtn" onclick="toggleNeighbourLinks()">&#8767; Neighbours</button>
       <button class="map-refresh-btn" onclick="loadMap()">Refresh</button>
     </div>
 
@@ -337,6 +359,8 @@
   var _showingAllContacts = false;    // toggle state
   var _showingPaths = false;          // paths toggle state
   var _showingMsgPaths = false;       // message paths toggle state
+  var _showingNeighbourLinks = false; // neighbour SNR links toggle state
+  var _neighbourLinksLayer = L.layerGroup().addTo(map); // layer for neighbour SNR lines
   var _highlightedRepeater = null;    // pubkey of repeater whose path is isolated (null = show all)
   var _pathsStateBeforeHighlight = false; // saved _showingPaths before a repeater was clicked
   var _allContactsData = [];          // latest contacts array from /api/map
@@ -531,6 +555,7 @@
     // Refresh paths layers if currently on
     if (_showingPaths) renderPathsLayer();
     if (_showingMsgPaths) renderMsgPathsLayer();
+    if (_showingNeighbourLinks) renderNeighbourLinksLayer();
 
     // --- Home/gateway marker ---
     if (home.lat && home.lon) {
@@ -1271,6 +1296,166 @@
       btn.classList.remove('active');
       _contactsLayer.clearLayers();
     }
+  }
+
+  // --- Neighbour SNR links layer ---
+
+  function toggleNeighbourLinks() {
+    _showingNeighbourLinks = !_showingNeighbourLinks;
+    var btn = document.getElementById('neighboursBtn');
+    if (_showingNeighbourLinks) {
+      btn.classList.add('active');
+      renderNeighbourLinksLayer();
+    } else {
+      btn.classList.remove('active');
+      _neighbourLinksLayer.clearLayers();
+    }
+  }
+
+  function renderNeighbourLinksLayer() {
+    _neighbourLinksLayer.clearLayers();
+    fetch('/api/neighbours')
+      .then(function(r) { return r.json(); })
+      .then(function(neighbours) {
+        if (!neighbours || !neighbours.length) return;
+
+        // Build a full-pubkey lookup for all known nodes with GPS
+        // pubkey (full) -> {lat, lon, name}
+        var fullPkLookup = {};
+
+        // Home node
+        if (_lastMapData && _lastMapData.home && _lastMapData.home.lat && _lastMapData.home.lon) {
+          var h = _lastMapData.home;
+          if (h.pubkey) fullPkLookup[h.pubkey.toLowerCase()] = { lat: h.lat, lon: h.lon, name: h.name || 'Gateway' };
+        }
+        // Configured repeaters
+        if (_lastMapData) {
+          (_lastMapData.repeaters || []).forEach(function(r) {
+            if (r.pubkey && r.lat && r.lon) fullPkLookup[r.pubkey.toLowerCase()] = { lat: r.lat, lon: r.lon, name: r.name };
+          });
+          // Contacts
+          (_lastMapData.contacts || []).forEach(function(c) {
+            if (c.pubkey && c.lat && c.lon) fullPkLookup[c.pubkey.toLowerCase()] = { lat: c.lat, lon: c.lon, name: c.name || c.pubkey.substring(0, 8) };
+          });
+          // Advert nodes
+          (_lastMapData.advert_nodes || []).forEach(function(n) {
+            if (n.pubkey && n.lat && n.lon) fullPkLookup[n.pubkey.toLowerCase()] = { lat: n.lat, lon: n.lon, name: n.name };
+          });
+        }
+
+        // Helper: resolve a pubkey (full) or pubkey_remote (8-char short) to a GPS position
+        function resolveNode(pk) {
+          if (!pk) return null;
+          var pkLower = pk.toLowerCase();
+          // Direct match
+          if (fullPkLookup[pkLower]) return fullPkLookup[pkLower];
+          // Prefix match — pubkey_remote is 8 chars, match against start of full pubkeys
+          var keys = Object.keys(fullPkLookup);
+          for (var i = 0; i < keys.length; i++) {
+            if (keys[i].startsWith(pkLower) || pkLower.startsWith(keys[i])) {
+              return fullPkLookup[keys[i]];
+            }
+          }
+          return null;
+        }
+
+        // Group by canonical pair (sorted) to collect both directions.
+        // In the API: pubkey = the node that HEARD the transmission,
+        //             pubkey_remote = the node that TRANSMITTED.
+        // So "pubkey heard pubkey_remote" → arrow points FROM pubkey_remote TO pubkey
+        // (i.e. arrow points to the receiver/listener = pubkey).
+        //
+        // We store per-direction SNR:
+        //   snrListener_pkA = pkA heard pkB transmit  (arrow: pkB → pkA)
+        //   snrListener_pkB = pkB heard pkA transmit  (arrow: pkA → pkB)
+        var pairs = {};
+
+        neighbours.forEach(function(nb) {
+          var listenerNode = resolveNode(nb.pubkey);         // who heard
+          var transmitterNode = resolveNode(nb.pubkey_remote); // who transmitted
+          if (!listenerNode || !transmitterNode) return;
+
+          // Canonical key: sort by pubkey string so pkA < pkB always
+          var pkListenerShort = nb.pubkey.toLowerCase().substring(0, 8);
+          var pkTransmitterShort = nb.pubkey_remote.toLowerCase().substring(0, 8);
+          var pkA = pkListenerShort < pkTransmitterShort ? pkListenerShort : pkTransmitterShort;
+          var pkB = pkListenerShort < pkTransmitterShort ? pkTransmitterShort : pkListenerShort;
+          var pairKey = pkA + '||' + pkB;
+
+          if (!pairs[pairKey]) {
+            var nodeA = pkListenerShort < pkTransmitterShort ? listenerNode : transmitterNode;
+            var nodeB = pkListenerShort < pkTransmitterShort ? transmitterNode : listenerNode;
+            pairs[pairKey] = {
+              nodeA: nodeA,  // node with smaller pubkey
+              nodeB: nodeB,  // node with larger pubkey
+              pkA: pkA,
+              pkB: pkB,
+              // snrListener_pkA: pkA heard pkB transmit (arrow pkB→pkA)
+              snrListener_pkA: null,
+              // snrListener_pkB: pkB heard pkA transmit (arrow pkA→pkB)
+              snrListener_pkB: null
+            };
+          }
+
+          // pkListener heard pkTransmitter → arrow points TO pkListener
+          if (pkListenerShort === pkA) {
+            pairs[pairKey].snrListener_pkA = nb.snr;  // pkA heard pkB → arrow pkB→pkA
+          } else {
+            pairs[pairKey].snrListener_pkB = nb.snr;  // pkB heard pkA → arrow pkA→pkB
+          }
+        });
+
+        // Draw a single line per pair with tooltip + permanent label
+        Object.keys(pairs).forEach(function(key) {
+          var p = pairs[key];
+          var ptA = [p.nodeA.lat, p.nodeA.lon];
+          var ptB = [p.nodeB.lat, p.nodeB.lon];
+
+          var nameA = p.nodeA.name || p.pkA;
+          var nameB = p.nodeB.name || p.pkB;
+
+          // Both the tooltip and the permanent label use the same HTML:
+          // one line per direction, showing transmitter→receiver
+          // snrListener_pkA: pkA heard pkB transmit → pkB→pkA
+          // snrListener_pkB: pkB heard pkA transmit → pkA→pkB
+          var lines = [];
+          if (p.snrListener_pkA !== null) lines.push(nameB + ' \u2192 ' + nameA + ': ' + p.snrListener_pkA.toFixed(1) + ' dB');
+          if (p.snrListener_pkB !== null) lines.push(nameA + ' \u2192 ' + nameB + ': ' + p.snrListener_pkB.toFixed(1) + ' dB');
+          var labelHtml = lines.join('<br>');
+
+          // Single polyline — wide enough to be easy to hover, styled as the link
+          var line = L.polyline([ptA, ptB], {
+            color: '#22d3ee',
+            weight: 12,
+            opacity: 0.0
+          });
+          line.bindTooltip(labelHtml, { sticky: true, className: 'map-label' });
+          _neighbourLinksLayer.addLayer(line);
+
+          // Thin visible line on top (non-interactive so tooltip fires on the wide one)
+          L.polyline([ptA, ptB], {
+            color: '#22d3ee',
+            weight: 2,
+            opacity: 0.65,
+            interactive: false
+          }).addTo(_neighbourLinksLayer);
+
+          // Permanent label at midpoint, above the line
+          var midLat = (ptA[0] + ptB[0]) / 2;
+          var midLon = (ptA[1] + ptB[1]) / 2;
+          L.tooltip({
+            permanent: true,
+            direction: 'top',
+            className: 'snr-label',
+            offset: [0, -6],
+            interactive: false
+          })
+            .setContent(labelHtml)
+            .setLatLng([midLat, midLon])
+            .addTo(_neighbourLinksLayer);
+        });
+      })
+      .catch(function() {});
   }
 
   // --- Set Home pick mode ---
