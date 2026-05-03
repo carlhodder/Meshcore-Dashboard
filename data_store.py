@@ -762,7 +762,7 @@ class DataStore:
                             ).alias('row_rank')
                         ).alias("top_n_subq")
                 )
-                query = Neighbour.select(subquery.c.pubkey, subquery.c.pubkey_remote, subquery.c.timestamp).from_(subquery).where(subquery.c.row_rank == 1)
+                query = Neighbour.select(subquery.c.pubkey, subquery.c.pubkey_remote, subquery.c.timestamp, subquery.c.snr).from_(subquery).where(subquery.c.row_rank == 1)
                 return list(query.dicts())            
         except Exception as e:
             print(f"[DataStore] Neighbour retrieve error: {e}")
