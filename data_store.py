@@ -18,7 +18,6 @@ from peewee import (
     AutoField,
     SQL,
     fn,
-    Window
 )
 from playhouse.migrate import SqliteMigrator, migrate
 from playhouse.shortcuts import model_to_dict
@@ -495,7 +494,11 @@ class DataStore:
                 for meas in query:
                     if meas.measurement_code in RepeaterState.metric_labels.keys():
                         data_keys.add(meas.measurement_code)
-                        output_format.setdefault(round(meas.timestamp / 60)*60, {}).setdefault(meas.measurement_code, []).append(meas.measurement_value)
+                        output_format.setdefault(
+                            round(meas.timestamp / 60) * 60, {}
+                        ).setdefault(meas.measurement_code, []).append(
+                            meas.measurement_value
+                        )
                 items = {
                     k: v
                     for k, v in RepeaterState.metric_labels.items()
@@ -505,7 +508,11 @@ class DataStore:
                     "items": items,
                     "defaults": RepeaterState.default_metrics,
                     "data": [
-                        {"timestamp": k, **{ki: sum(vi)/len(vi) for ki,vi in v.items()}} for k,v in sorted(output_format.items())
+                        {
+                            "timestamp": k,
+                            **{ki: sum(vi) / len(vi) for ki, vi in v.items()},
+                        }
+                        for k, v in sorted(output_format.items())
                     ],
                 }
         except Exception as e:
@@ -717,7 +724,6 @@ class DataStore:
                             self._repeaters[pubkey].save()
         except Exception as e:
             print(f"[DataStore] Repeater time update error: {e}")
-        
 
     def save_neighbours(self, pubkey, neighbour_data):
         # The neighbours data consists of a dict of:
@@ -767,7 +773,6 @@ class DataStore:
         except Exception as e:
             print(f"[DataStore] Neighbour retrieve error: {e}")
 
-
     def save_version_info(self, pubkey, version_info):
         with self._lock:
             if pubkey in self._repeaters:
@@ -776,4 +781,3 @@ class DataStore:
                 if self._db_path:
                     with db.connection_context():
                         self._repeaters[pubkey].save()
-        
