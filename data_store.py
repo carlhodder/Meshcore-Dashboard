@@ -17,6 +17,8 @@ from peewee import (
     BooleanField,
     AutoField,
     SQL,
+    fn,
+    Window
 )
 from playhouse.migrate import SqliteMigrator, migrate
 from playhouse.shortcuts import model_to_dict
@@ -748,6 +750,23 @@ class DataStore:
                 if self._db_path:
                     with db.connection_context():
                         self._repeaters[pubkey].save()
+
+    def get_most_recent_neighbours(self):
+        try:
+            with db.connection_context():
+                subquery = (
+                    Neighbour.select(Neighbour.pubkey, Neighbour.pubkey_remote, Neighbour.timestamp, Neighbour.snr, 
+                        fn.ROW_NUMBER().over(
+                            partition_by=[Neighbour.pubkey, Neighbour.pubkey_remote], 
+                                order_by=[Neighbour.timestamp.desc()]
+                            ).alias('row_rank')
+                        ).alias("top_n_subq")
+                )
+                query = Neighbour.select(subquery.c.pubkey, subquery.c.pubkey_remote, subquery.c.timestamp).from_(subquery).where(subquery.c.row_rank == 1)
+                return list(query.dicts())            
+        except Exception as e:
+            print(f"[DataStore] Neighbour retrieve error: {e}")
+
 
     def save_version_info(self, pubkey, version_info):
         with self._lock:

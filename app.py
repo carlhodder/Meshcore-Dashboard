@@ -117,6 +117,11 @@ async def get_repeaters():
     return store.get_all()
 
 
+@app.get("/api/neighbours")
+async def get_recent_neighbours():
+    return store.get_most_recent_neighbours()
+
+
 @app.get("/api/node-names")
 async def get_node_names():
     """Return the 2-char node ID → name cache for path hop resolution."""
