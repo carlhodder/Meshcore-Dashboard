@@ -158,7 +158,10 @@ class Config(UserConfigurables):
         return UserConfigurables(**self.model_dump()).model_dump(mode="json")
 
     def get_repeater(self, pubkey):
+        if not pubkey:
+            return None
+
         for r in self.repeaters:
-            if r["pubkey"] == pubkey:
+            if r["pubkey"] == pubkey or r["pubkey"].startswith(pubkey):
                 return r
         return None

@@ -502,7 +502,7 @@ class MeshcorePoller:
             hops, path = self._extract_hops_path(payload)
             if hops > 0 and not path and sender_pubkey:
                 stored_hops, stored_path = self.store.get_route_by_prefix(sender_pubkey)
-                if stored_path:
+                if stored_path and stored_hops == hops:
                     path = stored_path
                 if not path:
                     _, cached_path = self._lookup_contact_route(sender_pubkey)
@@ -551,6 +551,7 @@ class MeshcorePoller:
 
     async def _on_channel_msg(self, event):
         try:
+            # Channel (group) messages don't have sender pubkey.
             payload = event.payload if hasattr(event, "payload") else {}
             if not isinstance(payload, dict):
                 return
@@ -560,50 +561,13 @@ class MeshcorePoller:
                 (c["name"] for c in self._device_channels if c["idx"] == channel_idx),
                 f"Ch{channel_idx}",
             )
-            sender_pubkey = str(
-                payload.get(
-                    "pubkey_prefix",
-                    payload.get("sender_pubkey", payload.get("sender", "")),
-                )
-            )
-
-            # If this matches a repeater then update the clock:
-            self.__try_get_and_update_timestamp(sender_pubkey, payload)
 
             hops, path = self._extract_hops_path(payload)
-            if hops > 0 and not path and sender_pubkey:
-                stored_hops, stored_path = self.store.get_route_by_prefix(sender_pubkey)
-                if stored_path:
-                    path = stored_path
-                if not path:
-                    _, cached_path = self._lookup_contact_route(sender_pubkey)
-                    if cached_path:
-                        path = cached_path
-                if not path:
-                    import time as _time
-
-                    now = _time.time()
-                    for rx_ts, rx_hops, rx_path in reversed(self._pending_rx_paths):
-                        if now - rx_ts < 10.0 and abs(rx_hops - hops) <= 1 and rx_path:
-                            path = rx_path
-                            break
-                # Still no path — fire-and-forget path discovery so future messages work
-                if not path and sender_pubkey:
-                    contact_obj = self._find_contact(sender_pubkey)
-                    if contact_obj is not None:
-                        asyncio.ensure_future(
-                            self._discover_path(
-                                contact_obj,
-                                sender_pubkey,
-                                self._resolve_contact_name(sender_pubkey),
-                                configured_contact=False,
-                            )
-                        )
             if text:
                 is_new = self.store.store_message(
                     "in",
                     channel_idx,
-                    sender_pubkey,
+                    "",
                     ch_name,
                     text,
                     hops=hops,
@@ -613,17 +577,12 @@ class MeshcorePoller:
                     logger.info(
                         f"[msg] Channel {channel_idx} ({ch_name}, {hops} hops): {text[:60]}"
                     )
-                    sender_display = (
-                        self._resolve_contact_name(sender_pubkey)
-                        if sender_pubkey
-                        else "Unknown"
-                    )
                     self._log_event(
                         "channel_msg",
                         channel=ch_name,
                         channel_idx=channel_idx,
-                        sender=sender_display,
-                        pubkey=sender_pubkey,
+                        sender="Unknown",
+                        pubkey="",
                         hops=hops,
                         path=path,
                         path_chips=self._decode_path_chips(path),
@@ -703,54 +662,37 @@ class MeshcorePoller:
             payload = event.payload if hasattr(event, "payload") else {}
             if not isinstance(payload, dict):
                 return
-            pubkey_pre = str(
-                payload.get("pubkey_pre", payload.get("pubkey_prefix", ""))
-            )
-            new_hops = payload.get("out_path_len", -1)
+            pubkey_pre = payload.get("pubkey_pre", "")
+            new_hops = self._path_len_to_hops(payload.get("out_path_len"))
             raw_path = payload.get("out_path", "")
             if not pubkey_pre or new_hops < 0:
                 return
             # Parse path with the same auto-detect logic used elsewhere
-            disc_route = ""
-            if raw_path:
-                cpn = 2
-                if new_hops > 0:
-                    det = len(raw_path) // new_hops
-                    if det in (2, 4):
-                        cpn = det
-                segs = [
-                    raw_path[i : i + cpn]
-                    for i in range(0, len(raw_path), cpn)
-                    if len(raw_path[i : i + cpn]) == cpn
-                ]
-                disc_route = " > ".join(segs)
+            disc_route = self._path_and_hops_to_route_text(raw_path, new_hops)
 
-            # Cache for all contacts (used by non-configured contacts too)
-            self._contact_routes[pubkey_pre.upper()] = (new_hops, disc_route)
+            if disc_route is not None:
+                # Cache for all contacts (used by non-configured contacts too)
+                self._contact_routes[pubkey_pre.upper()] = (new_hops, disc_route)
 
-            # Update configured repeater store if this matches one
-            matched_pubkey = None
-            matched_name = None
-            for r in self._cfg.repeaters:
-                pk = r["pubkey"]
-                if pk.startswith(pubkey_pre) or pubkey_pre.startswith(pk):
-                    matched_pubkey = pk
-                    matched_name = r.get("name", pk[:8])
-                    break
-            if matched_pubkey:
-                self.store.update_route(matched_pubkey, new_hops, disc_route)
-            else:
-                matched_name = self._resolve_contact_name(pubkey_pre)
-            logger.info(
-                f"[path] Live route update — {matched_name}: {new_hops} hop(s), path={disc_route or 'direct'}"
-            )
-            self._log_event(
-                "path",
-                name=matched_name,
-                pubkey=matched_pubkey or pubkey_pre,
-                hops=new_hops,
-                route=disc_route,
-            )
+                # Update configured repeater store if this matches one
+                repeater_cfg = self._cfg.get_repeater(pubkey_pre)
+                if repeater_cfg:
+                    log_pubkey = repeater_cfg["pubkey"]
+                    log_name = repeater_cfg["name"]
+                    self.store.update_route(log_pubkey, new_hops, disc_route)
+                else:
+                    log_pubkey = pubkey_pre
+                    log_name = self._resolve_contact_name(pubkey_pre)
+                logger.info(
+                    f"[path] Live route update — {log_name}: {new_hops} hop(s), path={disc_route or 'direct'}"
+                )
+                self._log_event(
+                    "path",
+                    name=log_name,
+                    pubkey=log_pubkey,
+                    hops=new_hops,
+                    route=disc_route,
+                )
         except Exception as e:
             logger.debug(f"Error handling PATH_RESPONSE event: {e}")
 
@@ -993,18 +935,39 @@ class MeshcorePoller:
         except Exception:
             return ""
 
-    def _extract_hops_path(self, payload: dict) -> tuple:
-        """Extract hop count and route path from a message event payload.
-        Returns (hops: int, path: str) — hops is -1 if unknown."""
-        # Try several field names used across firmware versions
-        hops = payload.get("path_len", -1)
-        if hops is None:
-            hops = -1
+    def _path_len_to_hops(self, path_len):
         try:
-            hops = int(hops)
+            hops = int(path_len)
+            if hops == 255:
+                hops = -1
         except (TypeError, ValueError):
             hops = -1
 
+        return hops
+
+    def _path_and_hops_to_route_text(self, path, hops) -> str | None:
+        # Parse path with the same auto-detect logic used elsewhere
+        route = None
+
+        if hops > 0 and path is not None:
+            route = ""
+            cpn = 2
+            if hops > 0:
+                det = len(path) // hops
+                if det in (2, 4):
+                    cpn = det
+            segs = [
+                path[i : i + cpn]
+                for i in range(0, len(path), cpn)
+                if len(path[i : i + cpn]) == cpn
+            ]
+            route = " > ".join(segs)
+        return route
+
+    def _extract_hops_path(self, payload: dict) -> tuple:
+        """Extract hop count and route path from a message event payload.
+        Returns (hops: int, path: str) — hops is -1 if unknown."""
+        hops = self._path_len_to_hops(payload.get("path_len"))
         raw_path = payload.get("path", payload.get("out_path", ""))
         path_str = ""
         if raw_path:
@@ -1184,36 +1147,16 @@ class MeshcorePoller:
             )
             lat = contact.get("adv_lat", 0.0) or 0.0
             lon = contact.get("adv_lon", 0.0) or 0.0
-            out_path_len = contact.get(
-                "out_path_len", contact.get("hops", contact.get("path_len", -1))
+
+            hops = self._path_len_to_hops(contact.get("out_path_len"))
+            route_path = self._path_and_hops_to_route_text(
+                contact.get("out_path"), hops
             )
-            hops = (
-                out_path_len if (out_path_len is not None and out_path_len >= 0) else -1
-            )
-            raw_path = contact.get(
-                "out_path", contact.get("path", contact.get("route", ""))
-            )
-            route_path = ""
-            if raw_path:
-                chars_per_node = 2
-                if hops > 0:
-                    detected = len(raw_path) // hops
-                    if detected in (2, 4):
-                        chars_per_node = detected
-                segs = [
-                    raw_path[i : i + chars_per_node]
-                    for i in range(0, len(raw_path), chars_per_node)
-                    if len(raw_path[i : i + chars_per_node]) == chars_per_node
-                ]
-                route_path = " > ".join(segs)
             # Fall back to contact route cache from PATH_RESPONSE events
-            if not route_path:
-                cached = self._contact_routes.get(
-                    pk[:2].upper()
-                ) or self._contact_routes.get(pk.upper())
+            if route_path is None:
+                cached = self._lookup_contact_route(pk)
                 if cached:
-                    if hops < 0:
-                        hops = cached[0]
+                    hops = cached[0]
                     route_path = cached[1]
             # Try several possible name fields the meshcore SDK may use
             name = (
@@ -1289,45 +1232,34 @@ class MeshcorePoller:
         name = repeater_cfg["name"]
         rep_state = self.store.get(pubkey)
 
-        # Extract hop count and route path from contact
-        # MeshCore library uses out_path_len / out_path (not hops/path)
-        # out_path_len: -1 = flood routing, 0 = direct (1 hop), N = N +intermediate nodes
-        hops = 0
-        route_path = ""
-        if isinstance(contact, dict):
-            out_path_len = contact.get(
-                "out_path_len", contact.get("hops", contact.get("path_len", -1))
-            )
-            if out_path_len is not None and out_path_len >= 0:
-                hops = out_path_len  # 0 = direct, 1 = 1 intermediate, etc.
-                raw_path = contact.get(
-                    "out_path", contact.get("path", contact.get("route", ""))
+        # Use set value, or if not set discover path.
+        use_path = repeater_cfg.get("path", "").strip()
+        if not use_path:
+            hops = -1
+            route_path = ""
+            if isinstance(contact, dict):
+                hops = self._path_len_to_hops(contact.get("out_path_len"))
+                if hops is not None and hops >= 0:
+                    route_path = self._path_and_hops_to_route_text(
+                        contact.get("out_path"), hops
+                    )
+            elif hasattr(contact, "out_path_len"):
+                hops = self._path_len_to_hops(contact.out_path_len)
+                route_path = self._path_and_hops_to_route_text(
+                    contact.get("out_path"), hops
                 )
-                if raw_path:
-                    # Auto-detect 1-byte (2 hex chars) vs 2-byte (4 hex chars) prefix format
-                    chars_per_node = 2
-                    if hops > 0:
-                        detected = len(raw_path) // hops
-                        if detected in (2, 4):
-                            chars_per_node = detected
-                    segments = [
-                        raw_path[i : i + chars_per_node]
-                        for i in range(0, len(raw_path), chars_per_node)
-                        if len(raw_path[i : i + chars_per_node]) == chars_per_node
-                    ]
-                    route_path = " > ".join(segments)
-        elif hasattr(contact, "out_path_len"):
-            out_path_len = contact.out_path_len
-            hops = out_path_len if out_path_len >= 0 else 0
-            route_path = getattr(contact, "out_path", "") or ""
-        elif hasattr(contact, "hops"):
-            hops = contact.hops
-        self.store.update_route(pubkey, hops, route_path)
 
-        # If we know there are intermediate hops but the contact has no path data,
-        # run a path discovery request to find the actual route.
-        if hops > 0 and not route_path:
-            await self._discover_path(contact, pubkey, name)
+            self.store.update_route(pubkey, hops, route_path)
+
+            # If we know there are intermediate hops but the contact has no path data,
+            # run a path discovery request to find the actual route.
+            if hops > 0 and not route_path:
+                hops, route_path = await self._discover_path(contact, pubkey, name)
+
+            if hops >= 0:
+                use_path = route_path
+            else:
+                use_path = None
 
         # Extract GPS coordinates from contact if available
         if isinstance(contact, dict):
@@ -1336,12 +1268,11 @@ class MeshcorePoller:
             if lat != 0.0 or lon != 0.0:
                 self.store.update_location(pubkey, lat, lon)
 
-        route_desc = route_path if route_path else ("direct" if hops > 0 else "flood")
+        route_desc = use_path if use_path else ("direct" if hops > 0 else "flood")
         logger.info(f"[{name}] Polling repeater, hops={hops}, route={route_desc}...")
 
         # Apply custom path if configured, otherwise use flood
-        custom_path = repeater_cfg.get("path", "").strip()
-        await self._apply_path(contact, pubkey, name, custom_path)
+        await self._apply_path(contact, pubkey, name, use_path)
 
         # Login to repeater before requesting data
         admin_pass = repeater_cfg.get("admin_pass", "password")
@@ -1421,7 +1352,7 @@ class MeshcorePoller:
             result = await self.mc.commands.send_path_discovery_sync(contact)
             if result == None:
                 logger.debug(f"[{name}] Path discovery send failed")
-                return
+                return -1, None
             # Wait up to 10s for the PATH_RESPONSE event
             response = await self.mc.wait_for_event(
                 EventType.PATH_RESPONSE,
@@ -1430,19 +1361,13 @@ class MeshcorePoller:
             )
             if response is None:
                 logger.debug(f"[{name}] Path discovery timed out")
-                return
+                return -1, None
             payload = response.payload
-            new_hops = payload.get("out_path_len", -1)
-            raw_path = payload.get("out_path", "")
-            if new_hops >= 0:
-                disc_route = ""
-                if raw_path:
-                    segs = [
-                        raw_path[i : i + 2]
-                        for i in range(0, len(raw_path), 2)
-                        if len(raw_path[i : i + 2]) == 2
-                    ]
-                    disc_route = " > ".join(segs)
+            new_hops = self._path_len_to_hops(payload.get("out_path_len"))
+            disc_route = self._path_and_hops_to_route_text(
+                payload.get("out_path"), new_hops
+            )
+            if new_hops >= 0 and disc_route is not None:
                 if configured_contact:
                     self.store.update_route(pubkey, new_hops, disc_route)
                 else:
@@ -1454,13 +1379,16 @@ class MeshcorePoller:
                 self._log_event(
                     "path", name=name, pubkey=pubkey, hops=new_hops, route=disc_route
                 )
+            return new_hops, disc_route
         except Exception as e:
             logger.debug(f"[{name}] Path discovery error: {e}")
 
-    async def _apply_path(self, contact, pubkey: str, name: str, custom_path: str):
+    async def _apply_path(
+        self, contact, pubkey: str, name: str, custom_path: str | None
+    ):
         """Apply a custom route path or reset to flood if empty."""
         try:
-            if custom_path:
+            if custom_path is not None:
                 # Convert to bytes (fromhex ignores spaces) and back to string to clean.
                 # NOTE: As of 2.3.0 this method will throw if you send bytes
                 path_bytes = bytes.fromhex(custom_path.replace(",", ""))
