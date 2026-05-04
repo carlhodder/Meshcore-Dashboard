@@ -841,9 +841,10 @@ class MeshcorePoller:
                                 if len(pubkey_hex) >= 4
                                 else pubkey_hex[:2].upper()
                             )
-                            self._contact_routes[cache_key] = (path_len, route_str)
+                            hops = self._path_len_to_hops(path_len)
+                            self._contact_routes[cache_key] = (hops, route_str)
                             logger.debug(
-                                f"[advert path] {name_str or pubkey_hex[:8]}: hops={path_len}, path={route_str or 'direct'}"
+                                f"[advert path] {name_str or pubkey_hex[:8]}: hops={hops}, path={'flood' if hops == -1 else route_str or 'direct'}"
                             )
 
                     # For non-advert or if name not found: use first hop as node label
@@ -939,7 +940,7 @@ class MeshcorePoller:
         try:
             hops = int(path_len)
             if hops == 255:
-                hops = -1
+                hops = 0
         except (TypeError, ValueError):
             hops = -1
 
@@ -962,12 +963,17 @@ class MeshcorePoller:
                 if len(path[i : i + cpn]) == cpn
             ]
             route = " > ".join(segs)
+        elif hops == 0 and path ==  "":
+            route = ""
+            
         return route
 
     def _extract_hops_path(self, payload: dict) -> tuple:
         """Extract hop count and route path from a message event payload.
         Returns (hops: int, path: str) — hops is -1 if unknown."""
         hops = self._path_len_to_hops(payload.get("path_len"))
+        if hops == -1:
+            return -1, None
         raw_path = payload.get("path", payload.get("out_path", ""))
         path_str = ""
         if raw_path:
@@ -1234,8 +1240,8 @@ class MeshcorePoller:
 
         # Use set value, or if not set discover path.
         use_path = repeater_cfg.get("path", "").strip()
+        hops = len(use_path.split(","))
         if not use_path:
-            hops = -1
             route_path = ""
             if isinstance(contact, dict):
                 hops = self._path_len_to_hops(contact.get("out_path_len"))
@@ -1253,6 +1259,7 @@ class MeshcorePoller:
 
             # If we know there are intermediate hops but the contact has no path data,
             # run a path discovery request to find the actual route.
+            
             if hops > 0 and not route_path:
                 hops, route_path = await self._discover_path(contact, pubkey, name)
 
@@ -1268,7 +1275,7 @@ class MeshcorePoller:
             if lat != 0.0 or lon != 0.0:
                 self.store.update_location(pubkey, lat, lon)
 
-        route_desc = use_path if use_path else ("direct" if hops > 0 else "flood")
+        route_desc = use_path if use_path else ("direct" if hops >= 0 else "flood")
         logger.info(f"[{name}] Polling repeater, hops={hops}, route={route_desc}...")
 
         # Apply custom path if configured, otherwise use flood
