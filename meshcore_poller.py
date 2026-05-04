@@ -712,16 +712,7 @@ class MeshcorePoller:
                 return
             # Parse path with the same auto-detect logic used elsewhere
             disc_route = ""
-            if isinstance(raw_path, bytes) and raw_path:
-                bpn = 1
-                if new_hops > 0:
-                    det = len(raw_path) // new_hops
-                    if det in (1, 2):
-                        bpn = det
-                disc_route = " > ".join(
-                    raw_path[i : i + bpn].hex() for i in range(0, len(raw_path), bpn)
-                )
-            elif isinstance(raw_path, str) and raw_path:
+            if raw_path:
                 cpn = 2
                 if new_hops > 0:
                     det = len(raw_path) // new_hops
@@ -1006,7 +997,7 @@ class MeshcorePoller:
         """Extract hop count and route path from a message event payload.
         Returns (hops: int, path: str) — hops is -1 if unknown."""
         # Try several field names used across firmware versions
-        hops = payload.get("hops", payload.get("num_hops", payload.get("path_len", -1)))
+        hops = payload.get("path_len", -1)
         if hops is None:
             hops = -1
         try:
@@ -1014,21 +1005,9 @@ class MeshcorePoller:
         except (TypeError, ValueError):
             hops = -1
 
-        raw_path = payload.get(
-            "path", payload.get("route", payload.get("out_path", ""))
-        )
+        raw_path = payload.get("path", payload.get("out_path", ""))
         path_str = ""
-        if isinstance(raw_path, bytes) and raw_path:
-            bytes_per_node = 1
-            if hops > 0:
-                detected = len(raw_path) // hops
-                if detected in (1, 2):
-                    bytes_per_node = detected
-            path_str = " > ".join(
-                raw_path[i : i + bytes_per_node].hex()
-                for i in range(0, len(raw_path), bytes_per_node)
-            )
-        elif isinstance(raw_path, str) and raw_path:
+        if raw_path:
             # If no spaces, treat as compact hex — segment same way as bytes
             if " " not in raw_path and hops > 0:
                 chars_per_node = len(raw_path) // hops
@@ -1215,7 +1194,7 @@ class MeshcorePoller:
                 "out_path", contact.get("path", contact.get("route", ""))
             )
             route_path = ""
-            if isinstance(raw_path, str) and raw_path:
+            if raw_path:
                 chars_per_node = 2
                 if hops > 0:
                     detected = len(raw_path) // hops
@@ -1227,16 +1206,6 @@ class MeshcorePoller:
                     if len(raw_path[i : i + chars_per_node]) == chars_per_node
                 ]
                 route_path = " > ".join(segs)
-            elif isinstance(raw_path, bytes) and raw_path:
-                bytes_per_node = 1
-                if hops > 0:
-                    detected = len(raw_path) // hops
-                    if detected in (1, 2):
-                        bytes_per_node = detected
-                route_path = " > ".join(
-                    raw_path[i : i + bytes_per_node].hex()
-                    for i in range(0, len(raw_path), bytes_per_node)
-                )
             # Fall back to contact route cache from PATH_RESPONSE events
             if not route_path:
                 cached = self._contact_routes.get(
@@ -1334,7 +1303,7 @@ class MeshcorePoller:
                 raw_path = contact.get(
                     "out_path", contact.get("path", contact.get("route", ""))
                 )
-                if isinstance(raw_path, str) and raw_path:
+                if raw_path:
                     # Auto-detect 1-byte (2 hex chars) vs 2-byte (4 hex chars) prefix format
                     chars_per_node = 2
                     if hops > 0:
@@ -1347,23 +1316,9 @@ class MeshcorePoller:
                         if len(raw_path[i : i + chars_per_node]) == chars_per_node
                     ]
                     route_path = " > ".join(segments)
-                elif isinstance(raw_path, bytes) and raw_path:
-                    bytes_per_node = 1
-                    if hops > 0:
-                        detected = len(raw_path) // hops
-                        if detected in (1, 2):
-                            bytes_per_node = detected
-                    route_path = " > ".join(
-                        raw_path[i : i + bytes_per_node].hex()
-                        for i in range(0, len(raw_path), bytes_per_node)
-                    )
-                elif isinstance(raw_path, list) and raw_path:
-                    route_path = " > ".join(
-                        f"{b:02x}" if isinstance(b, int) else str(b) for b in raw_path
-                    )
         elif hasattr(contact, "out_path_len"):
-            opl = contact.out_path_len
-            hops = opl if opl >= 0 else 0
+            out_path_len = contact.out_path_len
+            hops = out_path_len if out_path_len >= 0 else 0
             route_path = getattr(contact, "out_path", "") or ""
         elif hasattr(contact, "hops"):
             hops = contact.hops
@@ -1481,17 +1436,13 @@ class MeshcorePoller:
             raw_path = payload.get("out_path", "")
             if new_hops >= 0:
                 disc_route = ""
-                if isinstance(raw_path, str) and raw_path:
+                if raw_path:
                     segs = [
                         raw_path[i : i + 2]
                         for i in range(0, len(raw_path), 2)
                         if len(raw_path[i : i + 2]) == 2
                     ]
                     disc_route = " > ".join(segs)
-                elif isinstance(raw_path, bytes) and raw_path:
-                    disc_route = " > ".join(
-                        raw_path[i : i + 1].hex() for i in range(len(raw_path))
-                    )
                 if configured_contact:
                     self.store.update_route(pubkey, new_hops, disc_route)
                 else:
@@ -1511,10 +1462,12 @@ class MeshcorePoller:
         try:
             if custom_path:
                 # Convert to bytes (fromhex ignores spaces) and back to string to clean.
+                # NOTE: As of 2.3.0 this method will throw if you send bytes
                 path_bytes = bytes.fromhex(custom_path.replace(",", ""))
                 await self.mc.commands.change_contact_path(contact, path_bytes.hex())
                 logger.info(f"[{name}] Set custom path: {custom_path}")
             else:
+                # Whereas this expects bytes (IIRC it may cast if necessary)
                 await self.mc.commands.reset_path(bytes.fromhex(pubkey))
                 logger.debug(f"[{name}] Using flood routing")
         except Exception as e:
