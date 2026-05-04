@@ -29,7 +29,7 @@ class UserConfigurables(BaseModel):
     companion_host: str = ""
     companion_port: int = 5000
     repeaters: List[Dict[str, Any]] = []
-    poll_interval_hours: int = 2
+    poll_interval_hours: int = 6
     stagger_delay_seconds: int = 30
     low_battery_percent: int = 20
     log_retention_hours: int = 24
@@ -43,10 +43,10 @@ class UserConfigurables(BaseModel):
     home_lat: float = 0.0
     home_lon: float = 0.0
     neighbours_enabled: bool = True
-    neighbours_check_hours: int = 6
+    neighbours_check_hours: int = 12
     clock_check_enabled: bool = True
-    clock_check_hours: int = 24
-    firmware_get_enabled: bool = True
+    clock_check_days: int = 7
+    firmware_get_enabled: bool = False
     firmware_get_days: int = 7
 
     @field_validator("companion_type", mode="after")
@@ -98,18 +98,18 @@ class UserConfigurables(BaseModel):
             raise ValueError("neighbours_check_hours must be >= 1 (1 hr)")
         return value
 
-    @field_validator("clock_check_hours", mode="after")
+    @field_validator("clock_check_days", mode="after")
     @classmethod
-    def clock_check_hours_is_valid(cls, value) -> int:
-        if value <= 0:
-            raise ValueError("clock_check_hours must be >= 1 (1 hr)")
+    def clock_check_days_is_valid(cls, value) -> int:
+        if value < 1:
+            raise ValueError("clock_check_days must be >= 1 (1 day)")
         return value
 
     @field_validator("firmware_get_days", mode="after")
     @classmethod
     def firmware_get_days_is_valid(cls, value) -> int:
         if value < 1:
-            raise ValueError("firmware_get_days must be >= 1")
+            raise ValueError("firmware_get_days must be >= 1 (1 day)")
         return value
 
 
