@@ -1,0 +1,327 @@
+/* Override global body padding so the map fills the full viewport */
+:global(html),
+:global(body) {
+  height: 100%;
+  margin: 0;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+/* Override global header bottom margin so it doesn't push the map out */
+:global(header) {
+  margin-bottom: 0 !important;
+}
+
+.mapWrap {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 80px); /* Account for global header */
+}
+
+.mapBody {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0; /* required for flex children to shrink below content size */
+}
+
+.leafletMap {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: #0f172a;
+}
+
+/* No-GPS sidebar panel */
+.mapNoGps {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.93);
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 0.65rem 0.9rem;
+  min-width: 180px;
+  max-width: 260px;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  display: none;
+}
+.mapNoGpsTitle {
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 0.4rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.mapNoGpsItem {
+  padding: 0.15rem 0;
+  color: #94a3b8;
+}
+.mapNoGpsItem :global(.dot) {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #475569;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+
+/* Leaflet popup overrides */
+:global(.leaflet-popup-content-wrapper) {
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+:global(.leaflet-popup-tip) {
+  background: #1e293b;
+}
+:global(.leaflet-popup-content) {
+  margin: 10px 14px;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+:global(.popup-name) {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #38bdf8;
+  margin-bottom: 0.3rem;
+}
+:global(.popup-row) {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+:global(.popup-label) {
+  color: #64748b;
+}
+:global(.popup-val) {
+  color: #e2e8f0;
+  font-weight: 500;
+}
+:global(.popup-online) {
+  color: #4ade80;
+}
+:global(.popup-offline) {
+  color: #f87171;
+}
+:global(.popup-unknown) {
+  color: #94a3b8;
+}
+
+/* Top-right button bar */
+.mapBtnBar {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  display: flex;
+  gap: 0.4rem;
+}
+.mapBtn {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid #334155;
+  color: #94a3b8;
+  border-radius: 8px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+  white-space: nowrap;
+}
+.mapRefreshBtn:hover {
+  color: #38bdf8;
+  border-color: #38bdf8;
+}
+.mapSetHomeBtn:hover {
+  color: #facc15;
+  border-color: #facc15;
+}
+.mapContactsBtn:hover {
+  color: #a78bfa;
+  border-color: #a78bfa;
+}
+.mapPathsBtn:hover {
+  color: #34d399;
+  border-color: #34d399;
+}
+.mapPathsBtn.active {
+  color: #34d399;
+  border-color: #34d399;
+  background: rgba(52, 211, 153, 0.1);
+}
+.mapNeighboursBtn:hover {
+  color: #22d3ee;
+  border-color: #22d3ee;
+}
+.mapNeighboursBtn.active {
+  color: #22d3ee;
+  border-color: #22d3ee;
+  background: rgba(34, 211, 238, 0.1);
+}
+
+/* SNR midpoint label on neighbour lines */
+:global(.snr-label) {
+  background: rgba(15, 23, 42, 0.85) !important;
+  border: 1px solid #22d3ee !important;
+  border-radius: 4px !important;
+  color: #22d3ee !important;
+  font-size: 0.68rem !important;
+  font-weight: 600 !important;
+  padding: 1px 4px !important;
+  white-space: nowrap !important;
+  pointer-events: none !important;
+  box-shadow: none !important;
+}
+:global(.snr-label::before) {
+  display: none !important;
+}
+.mapSetHomeBtn.picking {
+  color: #facc15;
+  border-color: #facc15;
+  background: rgba(250, 204, 21, 0.12);
+}
+.mapContactsBtn.active {
+  color: #a78bfa;
+  border-color: #a78bfa;
+  background: rgba(167, 139, 250, 0.12);
+}
+/* crosshair cursor while in pick mode */
+:global(.map-picking) {
+  cursor: crosshair !important;
+}
+
+/* Legend overlay */
+.mapLegend {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+.legendRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.1rem 0;
+}
+.legendDot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.online {
+  background: #4ade80;
+}
+.offline {
+  background: #f87171;
+}
+.unknown {
+  background: #64748b;
+}
+.gateway {
+  background: #38bdf8;
+}
+
+/* Node name labels */
+:global(.map-label) {
+  background: rgba(15, 23, 42, 0.82) !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #e2e8f0 !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  padding: 1px 5px !important;
+  border-radius: 3px !important;
+  white-space: nowrap !important;
+  pointer-events: none !important;
+}
+:global(.map-label::before) {
+  display: none !important;
+}
+:global(.map-label-advert) {
+  color: #c4b5fd !important;
+}
+
+@keyframes dash-flow {
+  to {
+    stroke-dashoffset: -1800;
+  }
+}
+
+/* Neighbour highlight panel */
+.mapNeighbourPanel {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.93);
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  padding: 0.65rem 0.9rem;
+  min-width: 190px;
+  max-width: 270px;
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+.mapNeighbourHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  color: #f59e0b;
+  font-size: 0.85rem;
+  margin-bottom: 0.35rem;
+}
+.mapNeighbourHeader button {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0 0.2rem;
+  line-height: 1;
+}
+.mapNeighbourHeader button:hover {
+  color: #94a3b8;
+}
+.mapNeighbourSubtitle {
+  font-size: 0.68rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.4rem;
+}
+.mapNeighbourItem {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0;
+  color: #e2e8f0;
+}
+.mapNeighbourDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.mapNeighbourGw {
+  color: #38bdf8;
+}

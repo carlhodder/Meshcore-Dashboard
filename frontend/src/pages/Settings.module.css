@@ -1,0 +1,295 @@
+.settingsPageHeader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0 1.25rem;
+  border-bottom: 1px solid #1e293b;
+  margin-bottom: 1.5rem;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.backBtn {
+  background: none;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-family: inherit;
+  text-decoration: none;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+  display: inline-block;
+}
+.backBtn:hover {
+  color: #e2e8f0;
+  border-color: #64748b;
+}
+.settingsPageHeader h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #e2e8f0;
+}
+.settingsPageBody {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1rem 2rem;
+}
+/* Connection status */
+.connStatusRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.connStatusText {
+  flex: 1;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+.connStatusText strong {
+  color: #e2e8f0;
+}
+
+.hidden {
+  display: none;
+}
+
+/* --- Settings Panel --- */
+
+.settingsSection {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid #334155;
+}
+
+.settingsSection h3 {
+  font-size: 0.85rem;
+  color: #38bdf8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+}
+
+.settingsRow {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.settingsField {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.settingsFieldSmall {
+  flex: 0 0 100px;
+}
+
+.settingsField label,
+.settingsLabel {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.settingsField input,
+.settingsField select {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.settingsField input:focus,
+.settingsField select:focus {
+  border-color: #38bdf8;
+}
+
+.settingsField input::placeholder {
+  color: #475569;
+}
+
+/* --- Repeater Rows in Settings --- */
+
+.repeaterRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: end;
+  margin-bottom: 0.5rem;
+}
+
+.repeaterRow .settingsField:first-child {
+  flex: 0 0 120px;
+}
+
+.repeaterRow .settingsField:nth-child(2) {
+  flex: 1;
+}
+
+.repeaterRow .settingsField:nth-child(3) {
+  flex: 0 0 100px;
+}
+
+.btnRemove {
+  background: none;
+  border: 1px solid #334155;
+  color: #ef4444;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  line-height: 1;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+  margin-bottom: 0;
+  align-self: end;
+}
+
+.btnRemove:hover {
+  background: #ef444420;
+  border-color: #ef4444;
+}
+
+/* --- Settings: Software Update --- */
+
+.settingsHelp {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 0.6rem;
+}
+
+.updateRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.updateZipName {
+  flex: 1;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.updateResult {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.updateResult.err {
+  color: #ef4444;
+}
+.updateOk {
+  color: #22c55e;
+}
+
+/* --- Buttons --- */
+
+.btnAdd {
+  background: none;
+  border: 1px dashed #334155;
+  color: #94a3b8;
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: inherit;
+  transition:
+    border-color 0.2s,
+    color 0.2s;
+}
+
+.btnAdd:hover {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+/* --- Settings Actions --- */
+
+.settingsActions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+}
+
+.settingsStatus {
+  margin-right: auto;
+  font-size: 0.8rem;
+}
+
+.settingsStatusOk {
+  color: #22c55e;
+}
+.settingsStatusError {
+  color: #ef4444;
+}
+
+.rptMoveBtns {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.rptFwBadge {
+  display: inline-block;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 20px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+  letter-spacing: 0.02em;
+}
+
+.cardMoveBtn {
+  background: none;
+  border: 1px solid #334155;
+  color: #64748b;
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  line-height: 1.4;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.cardMoveBtn:hover:not(:disabled) {
+  color: #38bdf8;
+  border-color: #38bdf8;
+}
+
+.cardMoveBtn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}

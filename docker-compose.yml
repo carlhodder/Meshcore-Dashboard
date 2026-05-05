@@ -11,8 +11,8 @@ services:
       - ./config.py:/app/config.py
       - ./data_store.py:/app/data_store.py
       - ./meshcore_poller.py:/app/meshcore_poller.py
-      - ./templates:/app/templates
-      - ./static:/app/static
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
     restart: unless-stopped
 
   ntfy:

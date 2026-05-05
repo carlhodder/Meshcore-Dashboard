@@ -11,7 +11,6 @@ from pathlib import Path
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from pydantic import ValidationError
 
@@ -26,7 +25,6 @@ logging.basicConfig(
 logger = logging.getLogger("app")
 
 BASE_DIR = Path(__file__).parent
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 cfg = Config()
 cfg._load()
@@ -72,41 +70,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="MeshCore Repeater Dashboard", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
-
-# --- Dashboard ---
-
-
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    html_path = BASE_DIR / "templates" / "dashboard.html"
-    return html_path.read_text()
-
-
-@app.get("/logs", response_class=HTMLResponse)
-async def logs_page(request: Request):
-    return templates.TemplateResponse(request, "logs.html")
-
-
-@app.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
-    return templates.TemplateResponse(request, "settings.html")
-
-
-@app.get("/messages", response_class=HTMLResponse)
-async def messages_page(request: Request):
-    return templates.TemplateResponse(request, "messages.html")
-
-
-@app.get("/map", response_class=HTMLResponse)
-async def map_page(request: Request):
-    return templates.TemplateResponse(request, "map.html")
-
-
-@app.get("/packets", response_class=HTMLResponse)
-async def packets_page(request: Request):
-    return templates.TemplateResponse(request, "packets.html")
+# Mount frontend dist as static (with html handling in catch-all below)
+frontend_dist = BASE_DIR / "frontend" / "dist"
+if frontend_dist.exists():
+    app.mount(
+        "/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets"
+    )
 
 
 # --- Repeater Data API ---
@@ -466,9 +436,9 @@ _ALLOWED_UPDATE_PATHS = {
     "requirements.txt",
     "docker-compose.yml",
 }
-_ALLOWED_UPDATE_PREFIXES = ("templates/", "static/")
+_ALLOWED_UPDATE_PREFIXES = ("frontend/dist/",)
 # These are top-level source directories — never strip them during normalisation
-_KNOWN_TOP_DIRS = {"templates", "static"}
+_KNOWN_TOP_DIRS = {"frontend"}
 
 
 def _is_allowed_path(name: str) -> bool:
@@ -539,6 +509,17 @@ async def apply_update(file: UploadFile = File(...)):
         return {"ok": False, "error": "Invalid zip file"}
     finally:
         os.unlink(tmp_path)
+
+
+# --- Catch-All SPA Route ---
+
+
+@app.get("/{full_path:path}", response_class=HTMLResponse)
+async def catch_all(full_path: str):
+    index_path = frontend_dist / "index.html"
+    if index_path.exists():
+        return index_path.read_text()
+    return "Frontend build not found. Run `cd frontend && npm run build`."
 
 
 @app.post("/api/restart")
