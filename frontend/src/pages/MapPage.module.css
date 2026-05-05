@@ -4,7 +4,6 @@
   height: 100%;
   margin: 0;
   padding: 0 !important;
-  overflow: hidden;
 }
 
 /* Override global header bottom margin so it doesn't push the map out */
@@ -15,7 +14,7 @@
 .mapWrap {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 80px); /* Account for global header */
+  height: calc(100vh - 100px); /* Account for global header */
 }
 
 .mapBody {

@@ -46,7 +46,7 @@ export default function Settings() {
       .then((r) => r.json())
       .then((s) => {
         setSettings({
-          companion_type: s.companion_type || "1",
+          companion_type: s.companion_type || 1,
           companion_host: s.companion_host || "",
           companion_port: s.companion_port || 5000,
           poll_interval_hours: s.poll_interval_hours || 2,
@@ -93,7 +93,6 @@ export default function Settings() {
     setSettings((prev) => ({
       ...prev,
       companion_type: type,
-      companion_host: type === "2" ? "192.168.0.100" : "/dev/ttyACMX or COMX",
     }));
   };
 
@@ -294,8 +293,8 @@ export default function Settings() {
               <input
                 type="radio"
                 id="type1"
-                value="1"
-                checked={settings.companion_type === "1"}
+                value={1}
+                checked={settings.companion_type == 1}
                 onChange={handleCompanionType}
                 style={{ marginRight: "0.25rem" }}
               />
@@ -305,8 +304,8 @@ export default function Settings() {
               <input
                 type="radio"
                 id="type2"
-                value="2"
-                checked={settings.companion_type === "2"}
+                value={2}
+                checked={settings.companion_type == 2}
                 onChange={handleCompanionType}
                 style={{ marginRight: "0.25rem" }}
               />
@@ -322,6 +321,7 @@ export default function Settings() {
               id="companion_host"
               value={settings.companion_host}
               onChange={handleChange}
+              placeholder={settings.companion_type == 1 ? "/dev/ttyACMX or COMX" : "192.168.0.100"}
             />
           </div>
           {settings.companion_type === "2" && (
@@ -489,9 +489,9 @@ export default function Settings() {
               value={settings.node_id_chars}
               onChange={handleChange}
             >
-              <option value="2">1 byte (2 chars)</option>
-              <option value="4">2 bytes (4 chars)</option>
-              <option value="6">3 bytes (6 chars)</option>
+              <option value={2}>1 byte (2 chars)</option>
+              <option value={4}>2 bytes (4 chars)</option>
+              <option value={6}>3 bytes (6 chars)</option>
             </select>
           </div>
         </div>
