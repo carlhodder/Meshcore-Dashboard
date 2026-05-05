@@ -315,7 +315,7 @@ export default function Settings() {
         </div>
         <div className={styles.settingsRow}>
           <div className={styles.settingsField}>
-            <label>IP Address</label>
+            <label>{settings.companion_type == 1 ? "Serial/USB": "IP Address"}</label>
             <input
               type="text"
               id="companion_host"
@@ -538,13 +538,7 @@ export default function Settings() {
         <h3>Repeaters</h3>
         <div>
           {settings.repeaters.map((r, i) => {
-            const liveMatch = liveData.find((ld) => ld.pubkey === r.pubkey);
-            const fwBadge =
-              liveMatch && liveMatch.fw_version ? (
-                <span className={styles.rptFwBadge}>
-                  FW {liveMatch.fw_version}
-                </span>
-              ) : null;
+
             return (
               <div className={styles.repeaterRow} key={`rpt_${i}`}>
                 <div className={styles.rptMoveBtns}>
@@ -580,7 +574,6 @@ export default function Settings() {
                       value={r.name}
                       onInput={(e) => updateRepeater(i, "name", e.target.value)}
                     />
-                    {fwBadge}
                   </div>
                   <div
                     className={styles.settingsField}
