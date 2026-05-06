@@ -356,7 +356,7 @@ export default function Dashboard() {
                         style={{ color: "#ef4444" }}
                       >
                         {r.time_offset_seconds > 0 ? "+" : ""}
-                        {r.time_offset_seconds}
+                        {Math.max(Math.min(r.time_offset_seconds, 999), -999)}
                         <span className={`${styles["metric-unit"]}`}> s</span>
                       </div>
                     </div>
