@@ -1,0 +1,150 @@
+
+.logs-panel {
+  max-width: 900px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.logs-refresh-btn {
+  align-self: end;
+}
+
+.logs-retention-setting {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #0f172a;
+  border-radius: 6px;
+}
+
+.logs-retention-setting label {
+  color: #94a3b8;
+}
+
+.logs-retention-setting input {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #e2e8f0;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  outline: none;
+  text-align: center;
+  width: 60px;
+}
+
+.logs-retention-setting input:focus {
+  border-color: #38bdf8;
+}
+
+.logs-table-wrap {
+  max-height: 55vh;
+  overflow-y: auto;
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
+
+.logs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.logs-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.logs-table th {
+  background: #334155;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid #475569;
+}
+
+.logs-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #1e293b;
+  vertical-align: top;
+}
+
+.log-time {
+  white-space: nowrap;
+  color: #64748b;
+  font-family: monospace;
+  font-size: 0.72rem;
+}
+
+.log-level {
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: 0.72rem;
+}
+
+.log-source {
+  color: #94a3b8;
+  font-family: monospace;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.log-message {
+  color: #e2e8f0;
+  word-break: break-word;
+}
+
+.log-row.log-error {
+  background: #ef444415;
+}
+.log-row.log-error .log-level {
+  color: #ef4444;
+}
+
+.log-row.log-warning {
+  background: #eab30810;
+}
+.log-row.log-warning .log-level {
+  color: #eab308;
+}
+
+.log-row.log-info .log-level {
+  color: #38bdf8;
+}
+
+.log-row.log-debug {
+  opacity: 0.6;
+}
+.log-row.log-debug .log-level {
+  color: #64748b;
+}
+
+.logs-empty {
+  text-align: center;
+  color: #64748b;
+  padding: 2rem !important;
+}
+
+@media (max-width: 640px) {
+  .logs-panel {
+    max-width: 100%;
+  }
+
+  .log-source {
+    display: none;
+  }
+
+  .logs-retention-setting {
+    flex-wrap: wrap;
+  }
+}

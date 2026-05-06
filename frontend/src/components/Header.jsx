@@ -1,5 +1,6 @@
 import { useState, useEffect } from "preact/hooks";
 import { Link } from "wouter";
+import styles from "./Header.module.css";
 
 export default function Header() {
   const [conn, setConn] = useState({
@@ -81,12 +82,12 @@ export default function Header() {
   };
 
   return (
-    <header>
-      <div className="header-title">
+    <header className={styles.header}>
+      <div className={`${styles["header-title"]}`}>
         <h1>MeshCore Repeater Monitor</h1>
-        <div className="subtitle">LoRa Mesh Network Dashboard</div>
-        <div className="header-meta">
-          <div className="node-status">
+        <div className={`${styles["subtitle"]}`}>LoRa Mesh Network Dashboard</div>
+        <div className={`${styles["header-meta"]}`}>
+          <div className={`${styles["node-status"]}`}>
             <span
               className={`status-dot ${conn.connected ? "online" : "offline"}`}
             ></span>
@@ -113,34 +114,40 @@ export default function Header() {
               </button>
             )}
           </div>
-          <span className="header-meta-sep">&mdash;</span>
-          <div className="conn-status">
+          <span className={`${styles["header-meta-sep"]}`}>&mdash;</span>
+          <div className={`${styles["conn-status"]}`}>
             <span
               className={`status-dot ${conn.connected ? "online" : "offline"}`}
             ></span>
             <span>{conn.connected ? "Connected" : "Connecting..."}</span>
           </div>
+          <Link
+            href="/settings"
+            className={`nav-btn ${styles["nav-settings"]} ${styles["nav-settings-mobile"]}`}
+          >
+            &#9881;
+          </Link>
         </div>
       </div>
-      <nav className="nav-group">
-        <Link href="/" className="nav-btn">
+      <nav className={`${styles["nav-group"]}`}>
+        <Link href="/" className={`nav-btn`}>
           Dashboard
         </Link>
-        <Link href="/map" className="nav-btn">
+        <Link href="/map" className={`nav-btn`}>
           Map
         </Link>
-        <Link href="/messages" className="nav-btn" onClick={markMessagesSeen}>
-          Messages{unreadBadge && <span className="msgs-unread-dot"></span>}
+        <Link href="/messages" className={`nav-btn`} onClick={markMessagesSeen}>
+          Messages{unreadBadge && <span className={`${styles["msgs-unread-dot"]}`}></span>}
         </Link>
-        <Link href="/packets" className="nav-btn">
+        <Link href="/packets" className={`nav-btn`}>
           Packets
         </Link>
-        <Link href="/logs" className="nav-btn">
+        <Link href="/logs" className={`nav-btn`}>
           Logs
         </Link>
         {ntfy.show && (
           <button
-            className={`nav-btn nav-ntfy-btn ${!ntfy.enabled ? "ntfy-disabled" : ""}`}
+            className={`nav-btn ${styles["nav-ntfy-btn"]} ${!ntfy.enabled ? styles["ntfy-disabled"] : ""}`}
             onClick={toggleNtfy}
             title={
               ntfy.enabled
@@ -151,7 +158,10 @@ export default function Header() {
             &#9993;
           </button>
         )}
-        <Link href="/settings" className="nav-btn nav-settings">
+        <Link
+          href="/settings"
+          className={`nav-btn ${styles["nav-settings"]} ${styles["nav-settings-desktop"]}`}
+        >
           &#9881;
         </Link>
       </nav>

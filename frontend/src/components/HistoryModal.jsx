@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "preact/hooks";
+import styles from "./HistoryModal.module.css";
 
 export default function HistoryModal({ pubkey, name, onClose }) {
   const [period, setPeriod] = useState("day");
@@ -139,13 +140,13 @@ export default function HistoryModal({ pubkey, name, onClose }) {
 
   return (
     <div
-      className="modal-overlay visible"
+      className={`${styles["modal-overlay"]} ${styles["visible"]}`}
       onClick={(e) => {
         if (e.target.className.includes("modal-overlay")) onClose();
       }}
     >
-      <div className="modal-content">
-        <div className="modal-header">
+      <div className={`${styles["modal-content"]}`}>
+        <div className={`${styles["modal-header"]}`}>
           <h2>
             {name} -{" "}
             {period === "day"
@@ -157,19 +158,19 @@ export default function HistoryModal({ pubkey, name, onClose }) {
                   : "1 Year"}{" "}
             History
           </h2>
-          <button className="modal-close" onClick={onClose}>
+          <button className={`${styles["modal-close"]}`} onClick={onClose}>
             &times;
           </button>
         </div>
         <div
-          className="logs-controls"
+          className={`${styles["logs-controls"]}`}
           style={{
             marginBottom: "1rem",
             borderBottom: "none",
             paddingBottom: 0,
           }}
         >
-          <div className="logs-filter-group">
+          <div className={`${styles["logs-filter-group"]}`}>
             <label>Period</label>
             <select value={period} onChange={(e) => setPeriod(e.target.value)}>
               <option value="day">Day</option>
@@ -178,10 +179,10 @@ export default function HistoryModal({ pubkey, name, onClose }) {
               <option value="year">Year</option>
             </select>
           </div>
-          <div className="logs-filter-group" style={{ position: "relative" }}>
+          <div className={`${styles["logs-filter-group"]}`} style={{ position: "relative" }}>
             <label>Metrics</label>
             <button
-              className="nav-btn"
+              className={`nav-btn`}
               style={{
                 padding: "0.4rem 0.5rem",
                 background: "#0f172a",

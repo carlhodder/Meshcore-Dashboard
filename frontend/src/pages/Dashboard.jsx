@@ -1,4 +1,5 @@
 import { useState, useEffect } from "preact/hooks";
+import styles from "./Dashboard.module.css";
 import HistoryModal from "../components/HistoryModal";
 
 function formatUptime(seconds) {
@@ -29,9 +30,9 @@ function batteryPercent(mv) {
 
 function batteryClass(mv) {
   if (mv <= 0) return "";
-  if (mv >= 3800) return "battery-good";
-  if (mv >= 3500) return "battery-mid";
-  return "battery-low";
+  if (mv >= 3800) return styles["battery-good"];
+  if (mv >= 3500) return styles["battery-mid"];
+  return styles["battery-low"];
 }
 
 function batteryColor(mv) {
@@ -43,9 +44,9 @@ function batteryColor(mv) {
 
 function signalClass(rssi) {
   if (rssi == null) return "";
-  if (rssi > -90) return "signal-good";
-  if (rssi > -110) return "signal-mid";
-  return "signal-bad";
+  if (rssi > -90) return styles["signal-good"];
+  if (rssi > -110) return styles["signal-mid"];
+  return styles["signal-bad"];
 }
 
 function buildRouteChain(r, prefixToName) {
@@ -196,7 +197,7 @@ export default function Dashboard() {
 
   if (loading)
     return (
-      <div className="no-data">
+      <div className={`${styles["no-data"]}`}>
         <h2>Connecting...</h2>
       </div>
     );
@@ -217,7 +218,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="grid" id="repeaterGrid">
+      <div className={`${styles["grid"]}`} id="repeaterGrid">
         {sortedRepeaters.map((r) => {
           const bPct = batteryPercent(r.battery_mv);
           const bClass = batteryClass(r.battery_mv);
@@ -242,7 +243,7 @@ export default function Dashboard() {
 
           return (
             <div
-              className="card"
+              className={`${styles["card"]}`}
               key={r.pubkey}
               onClick={(e) => {
                 if (
@@ -253,35 +254,35 @@ export default function Dashboard() {
                 setHistoryNode({ pubkey: r.pubkey, name: r.name });
               }}
             >
-              <div className="battery-warning-container">
+              <div className={`${styles["battery-warning-container"]}`}>
                 {isLowBat && (
-                  <div className="battery-warning">LOW BATTERY - {bPct}%</div>
+                  <div className={`${styles["battery-warning"]}`}>LOW BATTERY - {bPct}%</div>
                 )}
               </div>
-              <div className="card-header">
+              <div className={`${styles["card-header"]}`}>
                 <div>
-                  <div className="card-name">{r.name}</div>
-                  <div className="card-id">
+                  <div className={`${styles["card-name"]}`}>{r.name}</div>
+                  <div className={`${styles["card-id"]}`}>
                     {r.pubkey_short || r.pubkey.substring(0, 12)}
                   </div>
                 </div>
                 <span className={`status-dot ${statusClass}`}></span>
               </div>
-              <div className="metrics">
-                <div className="metric">
-                  <div className="metric-label">Battery</div>
+              <div className={`${styles["metrics"]}`}>
+                <div className={`${styles["metric"]}`}>
+                  <div className={`${styles["metric-label"]}`}>Battery</div>
                   <div className={`metric-value val-battery ${bClass}`}>
                     {r.battery_mv != null ? bPct : "--"}
-                    <span className="metric-unit"> %</span>
+                    <span className={`${styles["metric-unit"]}`}> %</span>
                   </div>
-                  <div className="metric-sub sub-battery">
+                  <div className={`${styles["metric-sub"]} sub-battery`}>
                     {r.battery_voltage != null
                       ? r.battery_voltage.toFixed(2) + " V"
                       : "--"}
                   </div>
-                  <div className="bar-bg">
+                  <div className={`${styles["bar-bg"]}`}>
                     <div
-                      className="bar-fill"
+                      className={`${styles["bar-fill"]}`}
                       style={{
                         width: `${bPct}%`,
                         background: batteryColor(r.battery_mv),
@@ -289,84 +290,84 @@ export default function Dashboard() {
                     ></div>
                   </div>
                 </div>
-                <div className="metric">
-                  <div className="metric-label">RSSI</div>
+                <div className={`${styles["metric"]}`}>
+                  <div className={`${styles["metric-label"]}`}>RSSI</div>
                   <div className={`metric-value val-rssi ${sClass}`}>
                     {r.rssi != null ? r.rssi : "--"}
-                    <span className="metric-unit"> dBm</span>
+                    <span className={`${styles["metric-unit"]}`}> dBm</span>
                   </div>
                 </div>
-                <div className="metric">
-                  <div className="metric-label">SNR</div>
-                  <div className="metric-value val-snr">
+                <div className={`${styles["metric"]}`}>
+                  <div className={`${styles["metric-label"]}`}>SNR</div>
+                  <div className={`${styles["metric-value"]} val-snr`}>
                     {r.snr != null ? r.snr.toFixed(1) : "--"}
-                    <span className="metric-unit"> dB</span>
+                    <span className={`${styles["metric-unit"]}`}> dB</span>
                   </div>
                 </div>
-                <div className="metric">
-                  <div className="metric-label">Noise Floor</div>
-                  <div className="metric-value val-noise">
+                <div className={`${styles["metric"]}`}>
+                  <div className={`${styles["metric-label"]}`}>Noise Floor</div>
+                  <div className={`${styles["metric-value"]} val-noise`}>
                     {r.noise_floor != null ? r.noise_floor : "--"}
-                    <span className="metric-unit"> dBm</span>
+                    <span className={`${styles["metric-unit"]}`}> dBm</span>
                   </div>
                 </div>
-                <div className="metric">
-                  <div className="metric-label">Uptime</div>
-                  <div className="metric-value val-uptime">
+                <div className={`${styles["metric"]}`}>
+                  <div className={`${styles["metric-label"]}`}>Uptime</div>
+                  <div className={`${styles["metric-value"]} val-uptime`}>
                     {formatUptime(r.uptime_seconds)}
                   </div>
                 </div>
-                <div className="metric">
-                  <div className="metric-label">Hops</div>
-                  <div className="metric-value val-hops">{hopsLabel}</div>
+                <div className={`${styles["metric"]}`}>
+                  <div className={`${styles["metric-label"]}`}>Hops</div>
+                  <div className={`${styles["metric-value"]} val-hops`}>{hopsLabel}</div>
                 </div>
                 {r.temperature != null && (
-                  <div className="metric">
-                    <div className="metric-label">Temp</div>
-                    <div className="metric-value val-temp">
+                  <div className={`${styles["metric"]}`}>
+                    <div className={`${styles["metric-label"]}`}>Temp</div>
+                    <div className={`${styles["metric-value"]} val-temp`}>
                       {r.temperature.toFixed(1)}
-                      <span className="metric-unit"> °C</span>
+                      <span className={`${styles["metric-unit"]}`}> °C</span>
                     </div>
                   </div>
                 )}
                 {r.humidity != null && (
-                  <div className="metric">
-                    <div className="metric-label">Humidity</div>
-                    <div className="metric-value val-humidity">
+                  <div className={`${styles["metric"]}`}>
+                    <div className={`${styles["metric-label"]}`}>Humidity</div>
+                    <div className={`${styles["metric-value"]} val-humidity`}>
                       {r.humidity.toFixed(1)}
-                      <span className="metric-unit"> %</span>
+                      <span className={`${styles["metric-unit"]}`}> %</span>
                     </div>
                   </div>
                 )}
                 {r.time_offset_seconds != null &&
                   Math.abs(r.time_offset_seconds) >= 30 && (
-                    <div className="metric">
-                      <div className="metric-label">Time Error</div>
+                    <div className={`${styles["metric"]}`}>
+                      <div className={`${styles["metric-label"]}`}>Time Error</div>
                       <div
-                        className="metric-value val-time-error"
+                        className={`${styles["metric-value"]} val-time-error`}
                         style={{ color: "#ef4444" }}
                       >
                         {r.time_offset_seconds > 0 ? "+" : ""}
                         {r.time_offset_seconds}
-                        <span className="metric-unit"> s</span>
+                        <span className={`${styles["metric-unit"]}`}> s</span>
                       </div>
                     </div>
                   )}
               </div>
-              <div className="card-footer">
-                <div className="card-footer-left">
-                  <div className="card-footer-seen">
+              <div className={`${styles["card-footer"]}`}>
+                <div className={`${styles["card-footer-left"]}`}>
+                  <div className={`${styles["card-footer-seen"]}`}>
                     Last seen: {timeAgo(r.last_seen_epoch)}
                   </div>
-                  <div className="card-footer-route-container">
+                  <div className={`${styles["card-footer-route-container"]}`}>
                     {routeChain && (
-                      <div className="card-footer-route">{routeChain}</div>
+                      <div className={`${styles["card-footer-route"]}`}>{routeChain}</div>
                     )}
                   </div>
-                  <div className="card-footer-fw-container">
+                  <div className={`${styles["card-footer-fw-container"]}`}>
                     {r.fw_version && (
                       <div
-                        className="card-footer-fw"
+                        className={`${styles["card-footer-fw"]}`}
                         style={{
                           color: "#64748b",
                           fontSize: "0.75rem",
@@ -377,9 +378,9 @@ export default function Dashboard() {
                       </div>
                     )}
                   </div>
-                  <div className="card-offline-text-container">
+                  <div className={`${styles["card-offline-text-container"]}`}>
                     {isOffline && (
-                      <div className="card-offline-text">
+                      <div className={`${styles["card-offline-text"]}`}>
                         No response to last poll
                       </div>
                     )}
@@ -397,7 +398,7 @@ export default function Dashboard() {
                     const cooldown = pingState ? pingState.cooldown : 0;
                     const result = pingState ? pingState.result : null;
                     const pingDisabled = cooldown > 0;
-                    let pingClass = "card-ping-btn";
+                    let pingClass = styles["card-ping-btn"];
                     if (cooldown > 0 && result) {
                       pingClass += result === "ok" ? " ping-ok" : " ping-fail";
                     }
@@ -414,11 +415,11 @@ export default function Dashboard() {
                     );
                   })()}
                   <div
-                    className="menu-container"
+                    className={`${styles["menu-container"]}`}
                     style={{ position: "relative" }}
                   >
                     <button
-                      className="hamburger-btn"
+                      className={`${styles["hamburger-btn"]}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         setMenuOpen(menuOpen === r.pubkey ? null : r.pubkey);
@@ -428,7 +429,7 @@ export default function Dashboard() {
                     </button>
                     {menuOpen === r.pubkey && (
                       <div
-                        className="popup-menu"
+                        className={`${styles["popup-menu"]}`}
                         style={{
                           display: "block",
                           position: "absolute",

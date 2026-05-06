@@ -1,4 +1,5 @@
 import { useState, useEffect } from "preact/hooks";
+import styles from "./Logs.module.css";
 
 export default function Logs() {
   const [hours, setHours] = useState(24);
@@ -232,10 +233,10 @@ export default function Logs() {
             />
             Auto-refresh
           </label>
-          <button className="btn btn-secondary" onClick={fetchLogs}>
+          <button className={`btn btn-secondary`} onClick={fetchLogs}>
             Refresh
           </button>
-          <button className="btn btn-secondary" onClick={exportCsv}>
+          <button className={`btn btn-secondary`} onClick={exportCsv}>
             Export CSV
           </button>
         </div>
@@ -273,7 +274,7 @@ export default function Logs() {
         />
         <span>hours</span>
         <button
-          className="btn btn-secondary"
+          className={`btn btn-secondary`}
           onClick={saveRetention}
           style={{ padding: "0.25rem 0.6rem", fontSize: "0.75rem" }}
         >
@@ -298,7 +299,7 @@ export default function Logs() {
         }}
       >
         <table
-          className="logs-table"
+          className={`${styles["logs-table"]}`}
           style={{
             width: "100%",
             borderCollapse: "collapse",
@@ -393,10 +394,10 @@ export default function Logs() {
               logs.map((entry, idx) => (
                 <tr
                   key={idx}
-                  className={`log-row log-${entry.level.toLowerCase()}`}
+                  className={`${styles["log-row"]} ${styles["log-" + entry.level.toLowerCase()]}`}
                 >
                   <td
-                    className="log-time"
+                    className={`${styles["log-time"]}`}
                     style={{
                       padding: "0.3rem 0.6rem",
                       borderBottom: "1px solid #1e293b",
@@ -413,7 +414,7 @@ export default function Logs() {
                     })}
                   </td>
                   <td
-                    className="log-level"
+                    className={`${styles["log-level"]}`}
                     style={{
                       padding: "0.3rem 0.6rem",
                       borderBottom: "1px solid #1e293b",
@@ -423,7 +424,7 @@ export default function Logs() {
                     {entry.level}
                   </td>
                   <td
-                    className="log-source"
+                    className={`${styles["log-source"]}`}
                     style={{
                       padding: "0.3rem 0.6rem",
                       borderBottom: "1px solid #1e293b",
@@ -433,7 +434,7 @@ export default function Logs() {
                     {entry.logger}
                   </td>
                   <td
-                    className="log-message"
+                    className={`${styles["log-message"]}`}
                     style={{
                       padding: "0.3rem 0.6rem",
                       borderBottom: "1px solid #1e293b",

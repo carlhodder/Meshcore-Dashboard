@@ -122,7 +122,11 @@
   right: 1rem;
   z-index: 1000;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.4rem;
+  /* Prevent overlap with legend on small screens (approx 140px wide + margin) */
+  max-width: calc(100vw - 160px);
 }
 .mapBtn {
   background: rgba(15, 23, 42, 0.9);
@@ -212,6 +216,24 @@
   padding: 0.55rem 0.8rem;
   font-size: 0.75rem;
   color: #94a3b8;
+}
+.legendHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+  color: #e2e8f0;
+}
+.legendToggle {
+  font-size: 0.6rem;
+  color: #64748b;
+  margin-left: 1rem;
+}
+.legendContent {
+  margin-top: 0.5rem;
+  border-top: 1px solid #334155;
+  padding-top: 0.3rem;
 }
 .legendRow {
   display: flex;
