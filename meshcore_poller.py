@@ -963,9 +963,9 @@ class MeshcorePoller:
                 if len(path[i : i + cpn]) == cpn
             ]
             route = " > ".join(segs)
-        elif hops == 0 and path ==  "":
+        elif hops == 0 and path == "":
             route = ""
-            
+
         return route
 
     def _extract_hops_path(self, payload: dict) -> tuple:
@@ -1259,7 +1259,7 @@ class MeshcorePoller:
 
             # If we know there are intermediate hops but the contact has no path data,
             # run a path discovery request to find the actual route.
-            
+
             if hops > 0 and not route_path:
                 hops, route_path = await self._discover_path(contact, pubkey, name)
 
@@ -1737,3 +1737,56 @@ class MeshcorePoller:
         except Exception as e:
             logger.error(f"[{name}] Failed to set clock: {e}")
             return {"ok": False, "error": str(e)}
+
+    async def cli_login(self, pubkey: str) -> dict:
+        """Login to a repeater for manual commands."""
+        if not self.mc:
+            return {"ok": False, "error": "Not connected to companion device"}
+
+        contact, repeater_cfg, error = await self.get_repeater_contact_and_config(
+            pubkey
+        )
+        if error:
+            return {"ok": False, "error": error}
+
+        name = repeater_cfg.get("name", pubkey[:8])
+        admin_pass = repeater_cfg.get("admin_pass", "password")
+        try:
+            success = await self._login_to_repeater(contact, name, admin_pass)
+            if not success:
+                return {"ok": False, "error": f"Failed to log in to {name}"}
+            logger.info(f"[{name}] CLI login successful")
+            return {"ok": True}
+        except Exception as e:
+            logger.error(f"[{name}] CLI failed to log in: {e}")
+            return {"ok": False, "error": str(e)}
+
+    async def cli_cmd(self, pubkey: str, cmd: str) -> dict:
+        """Send the user's manual input command to repeater and wait for response."""
+        if not self.mc:
+            return {"ok": False, "error": "Not connected to companion device"}
+
+        contact, repeater_cfg, error = await self.get_repeater_contact_and_config(
+            pubkey
+        )
+        if error:
+            return {"ok": False, "error": error}
+
+        name = repeater_cfg.get("name", pubkey[:8])
+        try:
+
+            def validator(event):
+                return (
+                    event.type == EventType.CONTACT_MSG_RECV and "text" in event.payload
+                )
+
+            result = await self._sync_request_remote_cmd(
+                pubkey, cmd, validator, contact, timeout=10
+            )
+            if result is None:
+                return {"ok": False, "error": f"({cmd} timed out)"}
+
+            return {"ok": True, "text": result.payload["text"]}
+        except Exception as e:
+            logger.error(f"[{name}] CLI command error: {e}")
+            return False

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "preact/hooks";
 import styles from "./Dashboard.module.css";
 import HistoryModal from "../components/HistoryModal";
+import RemoteAdminModal from "../components/RemoteAdminModal";
 
 function formatUptime(seconds) {
   if (!seconds || seconds <= 0) return "--";
@@ -68,6 +69,7 @@ export default function Dashboard() {
   const [repeaters, setRepeaters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [historyNode, setHistoryNode] = useState(null);
+  const [remoteAdminNode, setRemoteAdminNode] = useState(null);
   const [menuOpen, setMenuOpen] = useState(null);
   const [cardOrder, setCardOrder] = useState([]);
   const [pingStates, setPingStates] = useState({});
@@ -256,7 +258,9 @@ export default function Dashboard() {
             >
               <div className={`${styles["battery-warning-container"]}`}>
                 {isLowBat && (
-                  <div className={`${styles["battery-warning"]}`}>LOW BATTERY - {bPct}%</div>
+                  <div className={`${styles["battery-warning"]}`}>
+                    LOW BATTERY - {bPct}%
+                  </div>
                 )}
               </div>
               <div className={`${styles["card-header"]}`}>
@@ -319,7 +323,9 @@ export default function Dashboard() {
                 </div>
                 <div className={`${styles["metric"]}`}>
                   <div className={`${styles["metric-label"]}`}>Hops</div>
-                  <div className={`${styles["metric-value"]} val-hops`}>{hopsLabel}</div>
+                  <div className={`${styles["metric-value"]} val-hops`}>
+                    {hopsLabel}
+                  </div>
                 </div>
                 {r.temperature != null && (
                   <div className={`${styles["metric"]}`}>
@@ -342,7 +348,9 @@ export default function Dashboard() {
                 {r.time_offset_seconds != null &&
                   Math.abs(r.time_offset_seconds) >= 30 && (
                     <div className={`${styles["metric"]}`}>
-                      <div className={`${styles["metric-label"]}`}>Time Error</div>
+                      <div className={`${styles["metric-label"]}`}>
+                        Time Error
+                      </div>
                       <div
                         className={`${styles["metric-value"]} val-time-error`}
                         style={{ color: "#ef4444" }}
@@ -361,7 +369,9 @@ export default function Dashboard() {
                   </div>
                   <div className={`${styles["card-footer-route-container"]}`}>
                     {routeChain && (
-                      <div className={`${styles["card-footer-route"]}`}>{routeChain}</div>
+                      <div className={`${styles["card-footer-route"]}`}>
+                        {routeChain}
+                      </div>
                     )}
                   </div>
                   <div className={`${styles["card-footer-fw-container"]}`}>
@@ -444,6 +454,18 @@ export default function Dashboard() {
                         <button onClick={(e) => setClock(r.pubkey, e)}>
                           Set clock
                         </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpen(null);
+                            setRemoteAdminNode({
+                              pubkey: r.pubkey,
+                              name: r.name,
+                            });
+                          }}
+                        >
+                          Remote Admin
+                        </button>
                       </div>
                     )}
                   </div>
@@ -459,6 +481,13 @@ export default function Dashboard() {
           pubkey={historyNode.pubkey}
           name={historyNode.name}
           onClose={() => setHistoryNode(null)}
+        />
+      )}
+      {remoteAdminNode && (
+        <RemoteAdminModal
+          pubkey={remoteAdminNode.pubkey}
+          name={remoteAdminNode.name}
+          onClose={() => setRemoteAdminNode(null)}
         />
       )}
     </>
