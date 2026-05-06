@@ -944,7 +944,11 @@ export default function MapPage() {
   const loadMap = useCallback(() => {
     fetch("/api/map")
       .then((r) => r.json())
-      .then(renderMap)
+      .then((data) => {
+        if (JSON.stringify(lastMapDataRef.current) != JSON.stringify(data)) {
+          renderMap(data);
+        }
+      })
       .catch(() => {});
   }, [renderMap]);
 
