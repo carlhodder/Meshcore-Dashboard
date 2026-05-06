@@ -1789,4 +1789,4 @@ class MeshcorePoller:
             return {"ok": True, "text": result.payload["text"]}
         except Exception as e:
             logger.error(f"[{name}] CLI command error: {e}")
-            return False
+            return {"ok": False, "error": f"CLI command error: {e}"}

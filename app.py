@@ -516,12 +516,12 @@ async def apply_update(file: UploadFile = File(...)):
 
 @app.post("/api/cli_login/{pubkey}")
 async def cli_login(pubkey: str):
-    return poller.cli_login(pubkey)
+    return await poller.cli_login(pubkey)
 
 
 @app.post("/api/cli_cmd/{pubkey}/{cmd}")
 async def cli_cmd(pubkey: str, cmd: str):
-    return poller.cli_cmd(pubkey, cmd)
+    return await poller.cli_cmd(pubkey, cmd)
 
 
 # --- Catch-All SPA Route ---
