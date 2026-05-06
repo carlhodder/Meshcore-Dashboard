@@ -1,0 +1,8 @@
+**/__pycache__/**
+**/.*
+!.gitignore
+data
+frontend/dist
+frontend/node_modules
+frontend/public
+frontend/src/assets
