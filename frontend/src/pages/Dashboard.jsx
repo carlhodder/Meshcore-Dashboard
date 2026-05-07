@@ -45,21 +45,22 @@ function batteryColor(mv) {
 
 function signalClass(rssi) {
   if (rssi == null) return "";
-  if (rssi > -90) return styles["metric-good"];
+  if (rssi > -90) return styles["metric-good-white"];
   if (rssi > -110) return styles["metric-mid"];
   return styles["metric-bad"];
 }
 
 function snrClass(snr) {
   if (snr == null) return "";
-  if (snr >= 10) return styles["metric-good"];
+  if (snr >= 8) return styles["metric-good-white"];
   if (snr >= 0) return styles["metric-mid"];
   return styles["metric-bad"];
 }
 
 function noiseClass(noise_floor) {
   if (noise_floor == null) return "";
-  if (noise_floor <= -110) return styles["metric-good"];
+  if (noise_floor <= -110) return styles["metric-good-white"];
+  if (noise_floor >= -105 && noise_floor < -100) return styles["metric-mid"];
   if (noise_floor >= -100) return styles["metric-bad"];
   return "";
 }

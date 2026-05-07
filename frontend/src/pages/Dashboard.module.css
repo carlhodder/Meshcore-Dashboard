@@ -104,6 +104,9 @@
 .metric-good {
   color: #22c55e;
 }
+.metric-good-white {
+  color: #FFFFFF;
+}
 .metric-mid {
   color: #eab308;
 }

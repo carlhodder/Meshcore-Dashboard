@@ -119,20 +119,20 @@ class AdvertNode(BaseDbModel):
     class Meta:
         table_name = "advert_nodes"
 
-
+# Add a metric_label field to enable logging of the value. Assumes everything is a float atm.
 class RepeaterState(BaseDbModel):
     pubkey = TextField(primary_key=True)
     name = TextField(default="")
     time = FloatField(null=True, default=None)
-    time_offset_seconds = IntegerField(null=True, default=None)
+    time_offset_seconds = IntegerField(null=True, default=None, metric_label="Clock offset (s)")
     battery_mv = IntegerField(null=True, default=None)
-    battery_voltage = FloatField(null=True, default=None)
-    rssi = IntegerField(null=True, default=None)
-    snr = FloatField(null=True, default=None)
-    noise_floor = IntegerField(null=True, default=None)
+    battery_voltage = FloatField(null=True, default=None, metric_label="Battery voltage", metric_default=True)
+    rssi = IntegerField(null=True, default=None, metric_label="RSSI (dBm)", metric_default=True)
+    snr = FloatField(null=True, default=None, metric_label="SNR (dB)", metric_default=True)
+    noise_floor = IntegerField(null=True, default=None, metric_label="Noise floor (dBm)")
     uptime_seconds = IntegerField(null=True, default=None)
-    packets_recv = IntegerField(null=True, default=None)
-    packets_sent = IntegerField(null=True, default=None)
+    packets_recv = IntegerField(null=True, default=None, metric_label="Packets Rx")
+    packets_sent = IntegerField(null=True, default=None, metric_label="Packets Tx")
     hops = IntegerField(null=False, default=0)
     route_path = TextField(default="")
     lat = FloatField(null=True, default=None)
@@ -144,23 +144,17 @@ class RepeaterState(BaseDbModel):
     last_neighbour_poll = FloatField(null=False, default=0)
     last_clock_poll = FloatField(null=False, default=0)
     last_fw_poll = FloatField(null=False, default=0)
-    temperature = FloatField(null=True, default=None)
-    humidity = FloatField(null=True, default=None)
+    temperature = FloatField(null=True, default=None, metric_nane="Temperature")
+    humidity = FloatField(null=True, default=None, metric_label="Humidity")
+    
+    @classmethod
+    def get_metric_labels_dict(cls) -> dict:
+        return {k: getattr(f, "metric_label") for k,f in cls._meta.fields.items() if hasattr(f, "metric_label")}
 
-    # Labels for metrics. Inclusion in this list will make this data accessible.
-    metric_labels = {
-        "time_offset_seconds": "Clock offset (s)",
-        "battery_voltage": "Battery voltage",
-        "rssi": "RSSI (dBm)",
-        "snr": "SNR (dB)",
-        "noise_floor": "Noise floor (dBm)",
-        "packets_recv": "Packets Rx",
-        "packets_sent": "Packets Tx",
-        "temperature": "Temperature",
-        "humidity": "Humidity",
-    }
     # Default metrics to show initially
-    default_metrics = ["battery_voltage", "rssi", "snr"]
+    @classmethod
+    def get_default_metric_fields(cls) -> list:
+        return [name for name, field in cls._meta.fields.items() if getattr(field, "metric_default", False) and getattr(field, "metric_label" , None) is not None] 
 
     def to_dict(self) -> dict:
         d = model_to_dict(self)
@@ -410,7 +404,7 @@ class DataStore:
     def update_repeater(self, pubkey: str, **kwargs):
         """Update a repeater's state with new data from a poll response."""
         with self._lock:
-            metrics_to_store = RepeaterState.metric_labels.keys()
+            metrics_to_store = RepeaterState.get_metric_labels_dict().keys()
             with db.connection_context():
                 ts = time.time()
                 if pubkey not in self._repeaters:
@@ -495,7 +489,7 @@ class DataStore:
                 output_format = {}
                 data_keys = set()
                 for meas in query:
-                    if meas.measurement_code in RepeaterState.metric_labels.keys():
+                    if meas.measurement_code in RepeaterState.get_metric_labels_dict().keys():
                         data_keys.add(meas.measurement_code)
                         output_format.setdefault(
                             round(meas.timestamp / 60) * 60, {}
@@ -504,12 +498,12 @@ class DataStore:
                         )
                 items = {
                     k: v
-                    for k, v in RepeaterState.metric_labels.items()
+                    for k, v in RepeaterState.get_metric_labels_dict().items()
                     if k in data_keys
                 }
                 return {
                     "items": items,
-                    "defaults": RepeaterState.default_metrics,
+                    "defaults": RepeaterState.get_default_metric_fields(),
                     "data": [
                         {
                             "timestamp": k,
