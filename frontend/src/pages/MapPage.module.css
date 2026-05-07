@@ -264,6 +264,33 @@
 .gateway {
   background: #38bdf8;
 }
+.legendSubtitle {
+  font-size: 0.68rem;
+  color: #64748b;
+  margin: 0.25rem 0 0.1rem;
+}
+.dotContact {
+  background: #22d3ee;
+}
+.dotAdvert {
+  background: #7c3aed;
+}
+.pathSingle {
+  background: #34d399;
+  border-radius: 2px;
+}
+.pathShared {
+  background: #f59e0b;
+  border-radius: 2px;
+}
+.pathMsg {
+  background: #a78bfa;
+  border-radius: 2px;
+}
+.pathNeighbour {
+  background: #22d3ee;
+  border-radius: 2px;
+}
 
 /* Node name labels */
 :global(.map-label) {

@@ -104,37 +104,12 @@ export default function Logs() {
   };
 
   return (
-    <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 1rem" }}>
-      <div
-        style={{
-          display: "flex",
-          gap: "0.75rem",
-          alignItems: "flex-end",
-          flexWrap: "wrap",
-          marginBottom: "0.75rem",
-          marginTop: "1rem",
-        }}
-      >
-        <div
-          style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}
-        >
-          <label
-            style={{
-              fontSize: "0.7rem",
-              color: "#94a3b8",
-              textTransform: "uppercase",
-            }}
-          >
-            Show last
-          </label>
+    <div className={styles.container}>
+      <div className={styles.controls}>
+        <div className={styles["control-group"]}>
+          <label className={styles["control-label"]}>Show last</label>
           <select
-            style={{
-              background: "#0f172a",
-              border: "1px solid #334155",
-              color: "#e2e8f0",
-              padding: "0.4rem 0.5rem",
-              borderRadius: "6px",
-            }}
+            className={styles["control-input"]}
             value={hours}
             onChange={(e) => setHours(Number(e.target.value))}
           >
@@ -147,26 +122,10 @@ export default function Logs() {
             <option value="720">30 days</option>
           </select>
         </div>
-        <div
-          style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}
-        >
-          <label
-            style={{
-              fontSize: "0.7rem",
-              color: "#94a3b8",
-              textTransform: "uppercase",
-            }}
-          >
-            Level
-          </label>
+        <div className={styles["control-group"]}>
+          <label className={styles["control-label"]}>Level</label>
           <select
-            style={{
-              background: "#0f172a",
-              border: "1px solid #334155",
-              color: "#e2e8f0",
-              padding: "0.4rem 0.5rem",
-              borderRadius: "6px",
-            }}
+            className={styles["control-input"]}
             value={level}
             onChange={(e) => setLevel(e.target.value)}
           >
@@ -177,216 +136,88 @@ export default function Logs() {
             <option value="DEBUG">Debug</option>
           </select>
         </div>
-        <div
-          style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}
-        >
-          <label
-            style={{
-              fontSize: "0.7rem",
-              color: "#94a3b8",
-              textTransform: "uppercase",
-            }}
-          >
-            Search
-          </label>
+        <div className={styles["control-group"]}>
+          <label className={styles["control-label"]}>Search</label>
           <input
             type="text"
             placeholder="Filter by message..."
-            style={{
-              background: "#0f172a",
-              border: "1px solid #334155",
-              color: "#e2e8f0",
-              padding: "0.4rem 0.5rem",
-              borderRadius: "6px",
-              minWidth: "180px",
-            }}
+            className={`${styles["control-input"]} ${styles.search}`}
             value={search}
             onInput={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div
-          style={{
-            marginLeft: "auto",
-            display: "flex",
-            gap: "0.5rem",
-            alignItems: "flex-end",
-          }}
-        >
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.4rem",
-              fontSize: "0.78rem",
-              color: "#94a3b8",
-              cursor: "pointer",
-              padding: "0.4rem 0.6rem",
-              border: "1px solid #334155",
-              borderRadius: "6px",
-            }}
-          >
+        <div className={styles.actions}>
+          <label className={styles["auto-refresh"]}>
             <input
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
-              style={{ accentColor: "#38bdf8" }}
             />
             Auto-refresh
           </label>
-          <button className={`btn btn-secondary`} onClick={fetchLogs}>
+          <button className="btn btn-secondary" onClick={fetchLogs}>
             Refresh
           </button>
-          <button className={`btn btn-secondary`} onClick={exportCsv}>
+          <button className="btn btn-secondary" onClick={exportCsv}>
             Export CSV
           </button>
         </div>
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          fontSize: "0.75rem",
-          color: "#64748b",
-          marginBottom: "0.75rem",
-          padding: "0.5rem 0.75rem",
-          background: "#0f172a",
-          borderRadius: "6px",
-        }}
-      >
-        <label style={{ color: "#94a3b8" }}>Auto-delete logs older than</label>
+      <div className={styles["retention-setting"]}>
+        <label>Auto-delete logs older than</label>
         <input
           type="number"
           min="1"
           max="720"
           value={retention}
           onChange={(e) => setRetention(e.target.value)}
-          style={{
-            background: "#1e293b",
-            border: "1px solid #334155",
-            color: "#e2e8f0",
-            padding: "0.25rem 0.4rem",
-            borderRadius: "4px",
-            width: "60px",
-            textAlign: "center",
-          }}
+          className={styles["retention-input"]}
         />
         <span>hours</span>
         <button
-          className={`btn btn-secondary`}
+          className={`btn btn-secondary ${styles["retention-btn"]}`}
           onClick={saveRetention}
-          style={{ padding: "0.25rem 0.6rem", fontSize: "0.75rem" }}
         >
           Save
         </button>
         <span
-          style={{
-            marginLeft: "0.25rem",
-            color: retentionStatus === "Saved!" ? "#22c55e" : "#ef4444",
-          }}
+          className={
+            retentionStatus === "Saved!"
+              ? styles["status-success"]
+              : styles["status-error"]
+          }
         >
           {retentionStatus}
         </span>
       </div>
 
-      <div
-        style={{
-          border: "1px solid #334155",
-          borderRadius: "8px",
-          overflow: "auto",
-          maxHeight: "calc(100vh - 280px)",
-        }}
-      >
-        <table
-          className={`${styles["logs-table"]}`}
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.78rem",
-          }}
-        >
-          <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
+      <div className={styles["table-wrap"]}>
+        <table className={styles.table}>
+          <thead>
             <tr>
-              <th
-                style={{
-                  background: "#334155",
-                  color: "#94a3b8",
-                  padding: "0.5rem 0.6rem",
-                  textAlign: "left",
-                }}
-              >
-                Time
-              </th>
-              <th
-                style={{
-                  background: "#334155",
-                  color: "#94a3b8",
-                  padding: "0.5rem 0.6rem",
-                  textAlign: "left",
-                }}
-              >
-                Level
-              </th>
-              <th
-                style={{
-                  background: "#334155",
-                  color: "#94a3b8",
-                  padding: "0.5rem 0.6rem",
-                  textAlign: "left",
-                }}
-              >
-                Source
-              </th>
-              <th
-                style={{
-                  background: "#334155",
-                  color: "#94a3b8",
-                  padding: "0.5rem 0.6rem",
-                  textAlign: "left",
-                }}
-              >
-                Message
-              </th>
+              <th>Time</th>
+              <th>Level</th>
+              <th>Source</th>
+              <th>Message</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td
-                  colSpan="4"
-                  style={{
-                    textAlign: "center",
-                    padding: "2rem",
-                    color: "#475569",
-                  }}
-                >
+                <td colSpan="4" className={styles["empty-cell"]}>
                   Loading...
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td
-                  colSpan="4"
-                  style={{
-                    textAlign: "center",
-                    padding: "2rem",
-                    color: "#ef4444",
-                  }}
-                >
+                <td colSpan="4" className={styles["error-cell"]}>
                   Failed to load logs: {error}
                 </td>
               </tr>
             ) : logs.length === 0 ? (
               <tr>
-                <td
-                  colSpan="4"
-                  style={{
-                    textAlign: "center",
-                    padding: "2rem",
-                    color: "#475569",
-                  }}
-                >
+                <td colSpan="4" className={styles["empty-cell"]}>
                   No log entries found.
                 </td>
               </tr>
@@ -396,15 +227,7 @@ export default function Logs() {
                   key={idx}
                   className={`${styles["log-row"]} ${styles["log-" + entry.level.toLowerCase()]}`}
                 >
-                  <td
-                    className={`${styles["log-time"]}`}
-                    style={{
-                      padding: "0.3rem 0.6rem",
-                      borderBottom: "1px solid #1e293b",
-                      whiteSpace: "nowrap",
-                      color: "#94a3b8",
-                    }}
-                  >
+                  <td className={styles["log-time"]}>
                     {new Date(entry.timestamp * 1000).toLocaleString([], {
                       month: "short",
                       day: "numeric",
@@ -413,50 +236,16 @@ export default function Logs() {
                       second: "2-digit",
                     })}
                   </td>
-                  <td
-                    className={`${styles["log-level"]}`}
-                    style={{
-                      padding: "0.3rem 0.6rem",
-                      borderBottom: "1px solid #1e293b",
-                      fontWeight: "600",
-                    }}
-                  >
-                    {entry.level}
-                  </td>
-                  <td
-                    className={`${styles["log-source"]}`}
-                    style={{
-                      padding: "0.3rem 0.6rem",
-                      borderBottom: "1px solid #1e293b",
-                      color: "#64748b",
-                    }}
-                  >
-                    {entry.logger}
-                  </td>
-                  <td
-                    className={`${styles["log-message"]}`}
-                    style={{
-                      padding: "0.3rem 0.6rem",
-                      borderBottom: "1px solid #1e293b",
-                      color: "#e2e8f0",
-                    }}
-                  >
-                    {entry.message}
-                  </td>
+                  <td className={styles["log-level"]}>{entry.level}</td>
+                  <td className={styles["log-source"]}>{entry.logger}</td>
+                  <td className={styles["log-message"]}>{entry.message}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
-      <div
-        style={{
-          fontSize: "0.72rem",
-          color: "#64748b",
-          textAlign: "right",
-          marginTop: "0.4rem",
-        }}
-      >
+      <div className={styles.footer}>
         {logs.length > 0 && `${logs.length} entries`}
       </div>
     </div>
