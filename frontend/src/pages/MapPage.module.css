@@ -126,8 +126,13 @@
   justify-content: flex-end;
   gap: 0.4rem;
   /* Prevent overlap with legend on small screens (approx 140px wide + margin) */
-  max-width: calc(100vw - 160px);
+  max-width: calc(100vw - 200px);
 }
+
+.mapBtnBarSmallLegend {
+  max-width: calc(100vw - 140px);
+}
+
 .mapBtn {
   background: rgba(15, 23, 42, 0.9);
   border: 1px solid #334155;

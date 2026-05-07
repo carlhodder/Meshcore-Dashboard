@@ -154,10 +154,8 @@ class RepeaterState(BaseDbModel):
         "rssi": "RSSI (dBm)",
         "snr": "SNR (dB)",
         "noise_floor": "Noise floor (dBm)",
-        "uptime_seconds": "Uptime (s)",
         "packets_recv": "Packets Rx",
         "packets_sent": "Packets Tx",
-        "hops": "Hops",
         "temperature": "Temperature",
         "humidity": "Humidity",
     }
@@ -412,6 +410,7 @@ class DataStore:
     def update_repeater(self, pubkey: str, **kwargs):
         """Update a repeater's state with new data from a poll response."""
         with self._lock:
+            metrics_to_store = RepeaterState.metric_labels.keys()
             with db.connection_context():
                 ts = time.time()
                 if pubkey not in self._repeaters:
@@ -421,7 +420,11 @@ class DataStore:
                 for k, v in kwargs.items():
                     if hasattr(r, k) and v is not None:
                         setattr(r, k, v)
-                        if self._db_path and isinstance(v, numbers.Number):
+                        if (
+                            self._db_path
+                            and k in metrics_to_store
+                            and isinstance(v, numbers.Number)
+                        ):
                             try:
                                 with db.connection_context():
                                     Measurement.create(
@@ -760,16 +763,29 @@ class DataStore:
     def get_most_recent_neighbours(self):
         try:
             with db.connection_context():
-                subquery = (
-                    Neighbour.select(Neighbour.pubkey, Neighbour.pubkey_remote, Neighbour.timestamp, Neighbour.snr, 
-                        fn.ROW_NUMBER().over(
-                            partition_by=[Neighbour.pubkey, Neighbour.pubkey_remote], 
-                                order_by=[Neighbour.timestamp.desc()]
-                            ).alias('row_rank')
-                        ).alias("top_n_subq")
+                subquery = Neighbour.select(
+                    Neighbour.pubkey,
+                    Neighbour.pubkey_remote,
+                    Neighbour.timestamp,
+                    Neighbour.snr,
+                    fn.ROW_NUMBER()
+                    .over(
+                        partition_by=[Neighbour.pubkey, Neighbour.pubkey_remote],
+                        order_by=[Neighbour.timestamp.desc()],
+                    )
+                    .alias("row_rank"),
+                ).alias("top_n_subq")
+                query = (
+                    Neighbour.select(
+                        subquery.c.pubkey,
+                        subquery.c.pubkey_remote,
+                        subquery.c.timestamp,
+                        subquery.c.snr,
+                    )
+                    .from_(subquery)
+                    .where(subquery.c.row_rank == 1)
                 )
-                query = Neighbour.select(subquery.c.pubkey, subquery.c.pubkey_remote, subquery.c.timestamp, subquery.c.snr).from_(subquery).where(subquery.c.row_rank == 1)
-                return list(query.dicts())            
+                return list(query.dicts())
         except Exception as e:
             print(f"[DataStore] Neighbour retrieve error: {e}")
 

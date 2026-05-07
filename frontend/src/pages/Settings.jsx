@@ -265,6 +265,10 @@ export default function Settings() {
 
         <div className={styles.settingsSection}>
           <h3>Polling Timing</h3>
+          <p className={styles.settingsHelp}>
+            Main loop - request status and telemetry at this rate, and also any
+            others set if they're scheduled to be read.
+          </p>
           <div className={styles.settingsRow}>
             <div className={styles.settingsField}>
               <label>Poll Cycle (hours)</label>
@@ -300,6 +304,10 @@ export default function Settings() {
 
         <div className={styles.settingsSection}>
           <h3>Neighbours</h3>
+          <p className={styles.settingsHelp}>
+            Only controls repeat poll, manual poll will always request
+            neigbours.
+          </p>
           <div className={styles.settingsRow}>
             <div
               className={styles.settingsField}
@@ -331,6 +339,10 @@ export default function Settings() {
 
         <div className={styles.settingsSection}>
           <h3>Device Clock/time</h3>
+          <p className={styles.settingsHelp}>
+            Only controls repeat poll, manual poll will always update repeater
+            clock time.
+          </p>
           <div className={styles.settingsRow}>
             <div
               className={styles.settingsField}
@@ -362,6 +374,10 @@ export default function Settings() {
 
         <div className={styles.settingsSection}>
           <h3>Device Firmware Version</h3>
+          <p className={styles.settingsHelp}>
+            Only controls repeat poll, manual poll will always update FW
+            version.
+          </p>
           <div className={styles.settingsRow}>
             <div
               className={styles.settingsField}
@@ -422,6 +438,12 @@ export default function Settings() {
 
         <div className={styles.settingsSection}>
           <h3>Channels</h3>
+          <p className={styles.settingsHelp}>
+            Name each channel index you want to monitor and message on. Channel
+            passwords are configured on the device using the MeshCore app — the
+            dashboard uses whatever channels are already set up on the node.
+          </p>
+
           <div>
             {settings.channels.map((ch, i) => (
               <div className={styles.repeaterRow} key={`ch_${i}`}>

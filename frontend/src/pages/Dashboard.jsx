@@ -31,9 +31,9 @@ function batteryPercent(mv) {
 
 function batteryClass(mv) {
   if (mv <= 0) return "";
-  if (mv >= 3800) return styles["battery-good"];
-  if (mv >= 3500) return styles["battery-mid"];
-  return styles["battery-low"];
+  if (mv >= 3800) return styles["metric-good"];
+  if (mv >= 3500) return styles["metric-mid"];
+  return styles["metric-bad"];
 }
 
 function batteryColor(mv) {
@@ -45,9 +45,29 @@ function batteryColor(mv) {
 
 function signalClass(rssi) {
   if (rssi == null) return "";
-  if (rssi > -90) return styles["signal-good"];
-  if (rssi > -110) return styles["signal-mid"];
-  return styles["signal-bad"];
+  if (rssi > -90) return styles["metric-good"];
+  if (rssi > -110) return styles["metric-mid"];
+  return styles["metric-bad"];
+}
+
+function snrClass(snr) {
+  if (snr == null) return "";
+  if (snr >= 10) return styles["metric-good"];
+  if (snr >= 0) return styles["metric-mid"];
+  return styles["metric-bad"];
+}
+
+function noiseClass(noise_floor) {
+  if (noise_floor == null) return "";
+  if (noise_floor <= -110) return styles["metric-good"];
+  if (noise_floor >= -100) return styles["metric-bad"];
+  return "";
+}
+
+function tempClass(temperature) {
+  if (temperature == null) return "";
+  if (temperature <= 0 || temperature >= 40) return styles["metric-bad"];
+  return "";
 }
 
 function buildRouteChain(r, prefixToName) {
@@ -61,7 +81,7 @@ function buildRouteChain(r, prefixToName) {
   } else if (r.hops > 0) {
     for (let i = 0; i < r.hops; i++) chain.push("?");
   }
-  chain.push("GW");
+  chain.push("You");
   return chain.join(" \u2192 ");
 }
 
@@ -223,8 +243,6 @@ export default function Dashboard() {
       <div className={`${styles["grid"]}`} id="repeaterGrid">
         {sortedRepeaters.map((r) => {
           const bPct = batteryPercent(r.battery_mv);
-          const bClass = batteryClass(r.battery_mv);
-          const sClass = signalClass(r.rssi);
           const isLowBat = r.battery_mv > 0 && bPct <= 25; // 25% low bat threshold
           const isOffline = r.last_poll_ok === false;
 
@@ -275,7 +293,9 @@ export default function Dashboard() {
               <div className={`${styles["metrics"]}`}>
                 <div className={`${styles["metric"]}`}>
                   <div className={`${styles["metric-label"]}`}>Battery</div>
-                  <div className={`metric-value val-battery ${bClass}`}>
+                  <div
+                    className={`metric-value val-battery ${batteryClass(r.battery_mv)}`}
+                  >
                     {r.battery_mv != null ? bPct : "--"}
                     <span className={`${styles["metric-unit"]}`}> %</span>
                   </div>
@@ -296,21 +316,27 @@ export default function Dashboard() {
                 </div>
                 <div className={`${styles["metric"]}`}>
                   <div className={`${styles["metric-label"]}`}>RSSI</div>
-                  <div className={`metric-value val-rssi ${sClass}`}>
+                  <div
+                    className={`${styles["metric-value"]} val-rssi ${signalClass(r.rssi)}`}
+                  >
                     {r.rssi != null ? r.rssi : "--"}
                     <span className={`${styles["metric-unit"]}`}> dBm</span>
                   </div>
                 </div>
                 <div className={`${styles["metric"]}`}>
                   <div className={`${styles["metric-label"]}`}>SNR</div>
-                  <div className={`${styles["metric-value"]} val-snr`}>
+                  <div
+                    className={`${styles["metric-value"]} val-snr ${snrClass(r.snr)}`}
+                  >
                     {r.snr != null ? r.snr.toFixed(1) : "--"}
                     <span className={`${styles["metric-unit"]}`}> dB</span>
                   </div>
                 </div>
                 <div className={`${styles["metric"]}`}>
                   <div className={`${styles["metric-label"]}`}>Noise Floor</div>
-                  <div className={`${styles["metric-value"]} val-noise`}>
+                  <div
+                    className={`${styles["metric-value"]} val-noise ${noiseClass(r.noise_floor)}`}
+                  >
                     {r.noise_floor != null ? r.noise_floor : "--"}
                     <span className={`${styles["metric-unit"]}`}> dBm</span>
                   </div>
@@ -330,7 +356,9 @@ export default function Dashboard() {
                 {r.temperature != null && (
                   <div className={`${styles["metric"]}`}>
                     <div className={`${styles["metric-label"]}`}>Temp</div>
-                    <div className={`${styles["metric-value"]} val-temp`}>
+                    <div
+                      className={`${styles["metric-value"]} val-temp ${tempClass(r.temperature)}`}
+                    >
                       {r.temperature.toFixed(1)}
                       <span className={`${styles["metric-unit"]}`}> °C</span>
                     </div>

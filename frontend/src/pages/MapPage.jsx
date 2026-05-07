@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from "preact/hooks";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useLayoutEffect,
+} from "preact/hooks";
 import styles from "./MapPage.module.css";
 
 const NODE_PALETTE = [
@@ -952,6 +958,13 @@ export default function MapPage() {
       .catch(() => {});
   }, [renderMap]);
 
+  // Start legend minimised on small screens
+  useLayoutEffect(() => {
+    if (window.innerWidth < 768) {
+      setLegendOpen(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!window.L || !mapContainerRef.current) return;
 
@@ -1199,7 +1212,9 @@ export default function MapPage() {
           )}
         </div>
 
-        <div className={styles.mapBtnBar}>
+        <div
+          className={`${styles.mapBtnBar} ${!legendOpen ? styles.mapBtnBarSmallLegend : ""}`}
+        >
           <button
             className={`${styles.mapBtn} ${styles.mapSetHomeBtn} ${pickingHome ? styles.picking : ""}`}
             onClick={() => setPickingHome((p) => !p)}
@@ -1226,7 +1241,13 @@ export default function MapPage() {
           </button>
           <button
             className={`${styles.mapBtn} ${styles.mapNeighboursBtn} ${showingNeighbourLinks ? styles.active : ""}`}
-            onClick={() => setShowingNeighbourLinks((p) => !p)}
+            onClick={() => {
+              setShowingNeighbourLinks((p) => !p);
+              if (!showingAllContacts) {
+                // Show contacts with neighbours so the lines have a destination.
+                setShowingAllContacts(true);
+              }
+            }}
           >
             &#8767; Neighbours
           </button>
