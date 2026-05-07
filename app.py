@@ -1,3 +1,4 @@
+import atexit
 import asyncio
 import json
 import logging
@@ -35,9 +36,14 @@ poller = MeshcorePoller(store, cfg)
 _log_handler = store.get_log_handler()
 logging.getLogger().addHandler(_log_handler)
 
+# Close db on exit
+@atexit.register
+def shutdown():
+    store.close_db()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    store.open_db()
     task = asyncio.create_task(poller.start())
     logger.info("MeshCore poller started")
 
@@ -62,11 +68,8 @@ async def lifespan(app: FastAPI):
         await prune_task
     except asyncio.CancelledError:
         pass
-    try:
-        store.close_db()
-    except Exception:
-        pass
     logger.info("MeshCore poller stopped")
+    store.close_db()
 
 
 app = FastAPI(title="MeshCore Repeater Dashboard", lifespan=lifespan)

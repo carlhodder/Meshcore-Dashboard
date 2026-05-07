@@ -119,20 +119,26 @@ class AdvertNode(BaseDbModel):
     class Meta:
         table_name = "advert_nodes"
 
-# Add a metric_label field to enable logging of the value. Assumes everything is a float atm.
+# Wrapper just to keep metric field name, label, and default status all in one location. 
+# Having a metric_label enables logging of the value. Assumes everything isa float atm.
+def metric(field, metric_label=None, metric_default=None):
+    field.metric_label = metric_label
+    field.metric_default = metric_default
+    return field
+
 class RepeaterState(BaseDbModel):
     pubkey = TextField(primary_key=True)
     name = TextField(default="")
     time = FloatField(null=True, default=None)
-    time_offset_seconds = IntegerField(null=True, default=None, metric_label="Clock offset (s)")
+    time_offset_seconds = metric(IntegerField(null=True, default=None), metric_label="Clock offset (s)")
     battery_mv = IntegerField(null=True, default=None)
-    battery_voltage = FloatField(null=True, default=None, metric_label="Battery voltage", metric_default=True)
-    rssi = IntegerField(null=True, default=None, metric_label="RSSI (dBm)", metric_default=True)
-    snr = FloatField(null=True, default=None, metric_label="SNR (dB)", metric_default=True)
-    noise_floor = IntegerField(null=True, default=None, metric_label="Noise floor (dBm)")
+    battery_voltage = metric(FloatField(null=True, default=None), metric_label= "Battery voltage", metric_default=True)
+    rssi = metric(IntegerField(null=True, default=None), metric_label="RSSI (dBm)", metric_default=True)
+    snr = metric(FloatField(null=True, default=None), metric_label="SNR (dB)", metric_default=True)
+    noise_floor = metric(IntegerField(null=True, default=None), metric_label="Noise floor (dBm)")
     uptime_seconds = IntegerField(null=True, default=None)
-    packets_recv = IntegerField(null=True, default=None, metric_label="Packets Rx")
-    packets_sent = IntegerField(null=True, default=None, metric_label="Packets Tx")
+    packets_recv = metric(IntegerField(null=True, default=None), metric_label="Packets Rx")
+    packets_sent = metric(IntegerField(null=True, default=None), metric_label="Packets Tx")
     hops = IntegerField(null=False, default=0)
     route_path = TextField(default="")
     lat = FloatField(null=True, default=None)
@@ -144,8 +150,8 @@ class RepeaterState(BaseDbModel):
     last_neighbour_poll = FloatField(null=False, default=0)
     last_clock_poll = FloatField(null=False, default=0)
     last_fw_poll = FloatField(null=False, default=0)
-    temperature = FloatField(null=True, default=None, metric_nane="Temperature")
-    humidity = FloatField(null=True, default=None, metric_label="Humidity")
+    temperature = metric(FloatField(null=True, default=None), metric_label="Temperature")
+    humidity = metric(FloatField(null=True, default=None), metric_label="Humidity")
     
     @classmethod
     def get_metric_labels_dict(cls) -> dict:
@@ -199,11 +205,17 @@ class DataStore:
 
     def close_db(self):
         if self._db_path and not db.is_closed():
+            db.stop()
             db.close()
-
-    def _init_db(self):
+    
+    def open_db(self):
         if db.obj is None:
-            db.initialize(SqliteQueueDatabase(self._db_path))
+            db.initialize(SqliteQueueDatabase(self._db_path, autoconnect=True))
+        if db.is_closed():
+            db.connect()
+    
+    def _init_db(self):
+        self.open_db()
         with db.connection_context():
             db.create_tables(
                 [
@@ -405,36 +417,36 @@ class DataStore:
         """Update a repeater's state with new data from a poll response."""
         with self._lock:
             metrics_to_store = RepeaterState.get_metric_labels_dict().keys()
-            with db.connection_context():
-                ts = time.time()
-                if pubkey not in self._repeaters:
-                    self._repeaters[pubkey] = RepeaterState(pubkey=pubkey)
+            try:
+                with db.connection_context():
+                    ts = time.time()
+                    if pubkey not in self._repeaters:
+                        self._repeaters[pubkey] = RepeaterState(pubkey=pubkey)
 
-                r = self._repeaters[pubkey]
-                for k, v in kwargs.items():
-                    if hasattr(r, k) and v is not None:
-                        setattr(r, k, v)
-                        if (
-                            self._db_path
-                            and k in metrics_to_store
-                            and isinstance(v, numbers.Number)
-                        ):
-                            try:
-                                with db.connection_context():
-                                    Measurement.create(
-                                        timestamp=ts,
-                                        pubkey=pubkey,
-                                        measurement_code=k,
-                                        measurement_value=float(v),
-                                    )
-                            except Exception as e:
-                                print(f"[DataStore] DB write error: {e}")
-                r.last_seen_epoch = ts
-                r.last_poll_ok = True
-                r.last_poll_timestamp = ts
+                    r = self._repeaters[pubkey]
+                    for k, v in kwargs.items():
+                        if hasattr(r, k) and v is not None:
+                            setattr(r, k, v)
+                            if (
+                                self._db_path
+                                and k in metrics_to_store
+                                and isinstance(v, numbers.Number)
+                            ):
+                                Measurement.create(
+                                    timestamp=ts,
+                                    pubkey=pubkey,
+                                    measurement_code=k,
+                                    measurement_value=float(v),
+                                )
+                        
+                    r.last_seen_epoch = ts
+                    r.last_poll_ok = True
+                    r.last_poll_timestamp = ts
 
-                if self._db_path:
-                    r.save()
+                    if self._db_path:
+                        r.save()
+            except Exception as e:
+                print(f"[DataStore] DB write error: {e}")
 
     def get_all(self) -> List[dict]:
         """Return all repeater states as a JSON-serializable list. This will use the configured default lat/long if the
