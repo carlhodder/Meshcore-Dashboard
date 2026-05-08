@@ -100,6 +100,17 @@ class Message(BaseDbModel):
         ]
 
 
+class RepeaterCommandMessage(BaseDbModel):
+    id = AutoField()
+    timestamp = FloatField(index=True, null=False)
+    pubkey = TextField(null=False, index=True)
+    is_command = BooleanField(null=False)
+    text = TextField(null=False)
+
+    class Meta:
+        table_name = "repeater_command_message"
+
+
 class NodeName(BaseDbModel):
     node_id = TextField(primary_key=True)
     name = TextField()
@@ -195,6 +206,8 @@ class SQLiteLogHandler(logging.Handler):
 
 
 class DataStore:
+    has_new_message = False
+
     def __init__(self, cfg):
         self.cfg = cfg
         self._lock = threading.Lock()
@@ -227,6 +240,7 @@ class DataStore:
                     RepeaterState,
                     AdvertNode,
                     Neighbour,
+                    RepeaterCommandMessage,
                 ],
                 safe=True,
             )
@@ -321,22 +335,20 @@ class DataStore:
         with self._lock:
             with db.connection_context():
                 for r in self.cfg.repeaters:
-                    pubkey = r["pubkey"]
-                    name = r["name"]
-                    if pubkey not in self._repeaters:
-                        self._repeaters[pubkey] = RepeaterState.get_or_none(
-                            RepeaterState.pubkey == pubkey
+                    if r.pubkey not in self._repeaters:
+                        self._repeaters[r.pubkey] = RepeaterState.get_or_none(
+                            RepeaterState.pubkey == r.pubkey
                         )
-                        if self._repeaters[pubkey] is None:
-                            self._repeaters[pubkey] = RepeaterState(
-                                name=name, pubkey=pubkey
+                        if self._repeaters[r.pubkey] is None:
+                            self._repeaters[r.pubkey] = RepeaterState(
+                                name=r.name, pubkey=r.pubkey
                             )
-                            self._repeaters[pubkey].save(force_insert=True)
+                            self._repeaters[r.pubkey].save(force_insert=True)
                     else:
                         # Update name if it changed in settings
-                        self._repeaters[pubkey].name = name
+                        self._repeaters[r.pubkey].name = r.name
                         if self._db_path:
-                            self._repeaters[pubkey].save()
+                            self._repeaters[r.pubkey].save()
 
     def remove_repeater(self, pubkey: str):
         """Remove a repeater from the live store (when deleted from settings)."""
@@ -348,8 +360,8 @@ class DataStore:
 
     def sync_repeaters(self):
         """Sync store with configured repeater list. Add new, remove stale."""
-        configured_keys = {r["pubkey"] for r in self.cfg.repeaters}
         with self._lock:
+            configured_keys = {r.pubkey for r in self.cfg.repeaters}
             # Remove repeaters no longer in config
             for pk in list(self._repeaters.keys()):
                 if pk not in configured_keys:
@@ -415,14 +427,14 @@ class DataStore:
 
     def update_repeater(self, pubkey: str, **kwargs):
         """Update a repeater's state with new data from a poll response."""
+        ts = time.time()
         with self._lock:
             metrics_to_store = RepeaterState.get_metric_labels_dict().keys()
             try:
                 with db.connection_context():
-                    ts = time.time()
+                    
                     if pubkey not in self._repeaters:
                         self._repeaters[pubkey] = RepeaterState(pubkey=pubkey)
-
                     r = self._repeaters[pubkey]
                     for k, v in kwargs.items():
                         if hasattr(r, k) and v is not None:
@@ -459,8 +471,8 @@ class DataStore:
                 if not data["lat"] or not data["lon"]:
                     repeater_cfg = self.cfg.get_repeater(pubkey)
                     if repeater_cfg:
-                        data["lat"] = data["lat"] or repeater_cfg.get("lat", 0.0)
-                        data["lon"] = data["lon"] or repeater_cfg.get("lon", 0.0)
+                        data["lat"] = data["lat"] or repeater_cfg.lat
+                        data["lon"] = data["lon"] or repeater_cfg.lon
                 result.append(data)
             return result
 
@@ -504,7 +516,7 @@ class DataStore:
                     if meas.measurement_code in RepeaterState.get_metric_labels_dict().keys():
                         data_keys.add(meas.measurement_code)
                         output_format.setdefault(
-                            round(meas.timestamp / 60) * 60, {}
+                            round(meas.timestamp / (60 * 5)) * 60 * 5, {}
                         ).setdefault(meas.measurement_code, []).append(
                             meas.measurement_value
                         )
@@ -603,6 +615,7 @@ class DataStore:
                     path=path or "",
                     ack_code=ack_code or "",
                 )
+                self.has_new_message = True
                 return True  # new message
         except Exception as e:
             print(f"[DataStore] Message store error: {e}")
@@ -739,8 +752,8 @@ class DataStore:
         # pubkey (short)
         # secs_ago
         # snr
+        ts_start = time.time()
         with self._lock:
-            ts_start = time.time()
             for neighbour in neighbour_data:
                 pubkey_remote = neighbour["pubkey"]
                 # These should be from adverts so grouping by 10s blocks should be more than accurate enough
@@ -803,3 +816,13 @@ class DataStore:
                 if self._db_path:
                     with db.connection_context():
                         self._repeaters[pubkey].save()
+
+    def save_repeater_command_message(self, pubkey, is_command, text):
+        # Save a repeater command message or reply to cli command
+        ts = time.time()
+        with self._lock:
+            try:   
+                with db.connection_context():
+                    RepeaterCommandMessage.create(timestamp=ts, pubkey=pubkey, is_command=is_command, text=text)
+            except Exception as e:
+                print(f"[DataStore] Error saving repeater cli cmd: {e}")

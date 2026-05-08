@@ -56,6 +56,7 @@ class MeshcorePoller:
             []
         )  # [(ts, hops, path)] — recent RF paths for msg correlation
         self._msg_drained = False
+        self._dont_save_contact_msgs = False # Don't save app command replies to private messages
 
     def _lookup_contact_route(self, pubkey_prefix: str) -> tuple:
         """Fuzzy-match pubkey_prefix against _contact_routes. Returns (hops, path) or (-1, '')."""
@@ -219,8 +220,8 @@ class MeshcorePoller:
                     ):
                         break
 
-                    pubkey = repeater_cfg["pubkey"]
-                    name = repeater_cfg["name"]
+                    pubkey = repeater_cfg.pubkey
+                    name = repeater_cfg.name
 
                     rep_state = self.store.get(pubkey)
                     last_poll = rep_state.get("last_poll_timestamp") or 0.0
@@ -529,7 +530,7 @@ class MeshcorePoller:
                             )
                         )
             if text:
-                is_new = self.store.store_message(
+                is_new = not self._dont_save_contact_msgs and self.store.store_message(
                     "in", None, sender_pubkey, sender_name, text, hops=hops, path=path
                 )
                 if is_new:
@@ -677,8 +678,8 @@ class MeshcorePoller:
                 # Update configured repeater store if this matches one
                 repeater_cfg = self._cfg.get_repeater(pubkey_pre)
                 if repeater_cfg:
-                    log_pubkey = repeater_cfg["pubkey"]
-                    log_name = repeater_cfg["name"]
+                    log_pubkey = repeater_cfg.pubkey
+                    log_name = repeater_cfg.name
                     self.store.update_route(log_pubkey, new_hops, disc_route)
                 else:
                     log_pubkey = pubkey_pre
@@ -1234,12 +1235,12 @@ class MeshcorePoller:
         return False
 
     async def _poll_repeater(self, contact, repeater_cfg, manual=False):
-        pubkey = repeater_cfg["pubkey"]
-        name = repeater_cfg["name"]
+        pubkey = repeater_cfg.pubkey
+        name = repeater_cfg.name
         rep_state = self.store.get(pubkey)
 
         # Use set value, or if not set discover path.
-        use_path = repeater_cfg.get("path", "").strip()
+        use_path = repeater_cfg.path.strip()
         hops = len(use_path.split(","))
         if not use_path:
             route_path = ""
@@ -1282,9 +1283,8 @@ class MeshcorePoller:
         await self._apply_path(contact, pubkey, name, use_path)
 
         # Login to repeater before requesting data
-        admin_pass = repeater_cfg.get("admin_pass", "password")
         success = await self.__repeat_on_failure(
-            self._login_to_repeater, [contact, name, admin_pass], reattempts=1
+            self._login_to_repeater, [contact, name, repeater_cfg.admin_pass], reattempts=1
         )
         if success:
             if not self._running or self._needs_reconnect or self._stay_disconnected:
@@ -1544,19 +1544,9 @@ class MeshcorePoller:
         Also we just rely on the global message received handler to use the timestamp on the rx packet to update.
         """
         try:
-            async with self.mc.commands._mesh_request_lock:
-                result = await self.mc.commands.send_cmd(contact, "clock")
-
-                if result.type == EventType.ERROR:
-                    logger.debug(f"[{name}] Clock/repeater time request failed")
-                    return False
-
-                result = await self.mc.dispatcher.wait_for_event(
-                    EventType.CONTACT_MSG_RECV,
-                    attribute_filters={"pubkey_prefix": pubkey[:12]},
-                    timeout=20,
-                )
-
+            result = await self._sync_request_remote_cmd(
+                pubkey, "clock", lambda a: True, contact
+            )
             if result is None:
                 logger.debug(f"[{name}] Clock/repeater time request failed")
                 return False
@@ -1587,8 +1577,10 @@ class MeshcorePoller:
         )
         try:
             async with self.mc.commands._mesh_request_lock:
+                self._dont_save_contact_msgs =  True
                 await self.mc.commands.send_cmd(contact, command)
                 result_data = await asyncio.wait_for(future, timeout=timeout)
+                self._dont_save_contact_msgs = False
             return result_data
 
         except asyncio.TimeoutError:
@@ -1599,6 +1591,8 @@ class MeshcorePoller:
         finally:
             # 5. Clean up the subscriber
             self.mc.unsubscribe(sub)
+            self._dont_save_contact_msgs = False
+
 
     async def _request_version(self, pubkey: str, name: str, contact):
         """Request version / fw info"""
@@ -1638,8 +1632,7 @@ class MeshcorePoller:
                 error += "Repeater not found in contacts — may be out of range. "
 
         for r in self._cfg.repeaters:
-            pk = r["pubkey"]
-            if pk == pubkey or pk.startswith(pubkey) or pubkey.startswith(pk):
+            if r.pubkey == pubkey or r.pubkey.startswith(pubkey) or pubkey.startswith(r.pubkey):
                 repeater_cfg = r
                 break
         if repeater_cfg is None:
@@ -1658,7 +1651,7 @@ class MeshcorePoller:
         if error:
             return {"ok": False, "error": error}
 
-        name = repeater_cfg.get("name", pubkey[:8])
+        name = repeater_cfg.name or pubkey[:8]
         start = time.monotonic()
         try:
             await self._poll_repeater(contact, repeater_cfg, manual=True)
@@ -1680,10 +1673,9 @@ class MeshcorePoller:
         if error:
             return {"ok": False, "error": error}
 
-        name = repeater_cfg.get("name", pubkey[:8])
-        admin_pass = repeater_cfg.get("admin_pass", "password")
+        name = repeater_cfg.name or pubkey[:8]
         try:
-            success = await self._login_to_repeater(contact, name, admin_pass)
+            success = await self._login_to_repeater(contact, name, repeater_cfg.admin_pass)
             if not success:
                 return {"ok": False, "error": f"Failed to log in to {name}"}
             result = await self.mc.commands.send_cmd(contact, "advert")
@@ -1713,10 +1705,9 @@ class MeshcorePoller:
         if error:
             return {"ok": False, "error": error}
 
-        name = repeater_cfg.get("name", pubkey[:8])
-        admin_pass = repeater_cfg.get("admin_pass", "password")
+        name = repeater_cfg.name or pubkey[:8]
         try:
-            success = await self._login_to_repeater(contact, name, admin_pass)
+            success = await self._login_to_repeater(contact, name, repeater_cfg.admin_pass)
             if not success:
                 return {"ok": False, "error": f"Failed to log in to {name}"}
             await asyncio.sleep(0.5)
@@ -1749,10 +1740,9 @@ class MeshcorePoller:
         if error:
             return {"ok": False, "error": error}
 
-        name = repeater_cfg.get("name", pubkey[:8])
-        admin_pass = repeater_cfg.get("admin_pass", "password")
+        name = repeater_cfg.name or pubkey[:8]
         try:
-            success = await self._login_to_repeater(contact, name, admin_pass)
+            success = await self._login_to_repeater(contact, name, repeater_cfg.admin_pass)
             if not success:
                 return {"ok": False, "error": f"Failed to log in to {name}"}
             logger.info(f"[{name}] CLI login successful")
@@ -1772,20 +1762,21 @@ class MeshcorePoller:
         if error:
             return {"ok": False, "error": error}
 
-        name = repeater_cfg.get("name", pubkey[:8])
+        name = repeater_cfg.name or pubkey[:8]
         try:
 
             def validator(event):
                 return (
                     event.type == EventType.CONTACT_MSG_RECV and "text" in event.payload
                 )
-
+            self.store.save_repeater_command_message(self, repeater_cfg.pubkey, True, cmd)
             result = await self._sync_request_remote_cmd(
                 pubkey, cmd, validator, contact, timeout=10
             )
             if result is None:
                 return {"ok": False, "error": f"({cmd} timed out)"}
 
+            self.store.save_repeater_command_message(self, repeater_cfg.pubkey, False, result.payload["text"])
             return {"ok": True, "text": result.payload["text"]}
         except Exception as e:
             logger.error(f"[{name}] CLI command error: {e}")

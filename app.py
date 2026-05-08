@@ -135,15 +135,15 @@ async def get_message_paths():
 async def get_map_data():
     """Return repeater data optimised for the map page, including home node location."""
     repeaters = store.get_all()
-    home = {"lat": 0.0, "lon": 0.0, "name": "Gateway"}
+    home = {"lat": None, "lon": None, "name": "Gateway"}
     if poller and poller.mc and hasattr(poller.mc, "self_info") and poller.mc.self_info:
         si = poller.mc.self_info
-        home["lat"] = si.get("adv_lat", 0.0) or 0.0
-        home["lon"] = si.get("adv_lon", 0.0) or 0.0
+        home["lat"] = si.get("adv_lat", None) 
+        home["lon"] = si.get("adv_lon", None)
     # Fall back to manually saved home location if device has no GPS
     if not home["lat"] and not home["lon"]:
-        home["lat"] = cfg.home_lat or 0.0
-        home["lon"] = cfg.home_lon or 0.0
+        home["lat"] = cfg.home_lat
+        home["lon"] = cfg.home_lon 
 
     # Include all mesh contacts for neighbour discovery on the map
     mesh_contacts = []
@@ -180,17 +180,14 @@ async def set_home_location(request: Request):
     """Save a manually placed home/gateway location."""
     body = await request.json()
     try:
-        lat = float(body.get("lat", 0.0))
-        lon = float(body.get("lon", 0.0))
-    except (TypeError, ValueError):
-        return {"ok": False, "error": "lat and lon must be numbers"}
+        cfg.home_lat = body["lat"]
+        cfg.home_lon = body["lon"]
+        cfg.save()
+        logger.info(f"Home location set to {cfg.home_lat:.6f}, {cfg.home_lon:.6f}")
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
-    cfg.home_lat = lat
-    cfg.home_lon = lon
-    cfg.save_settings()
-
-    cfg.save()
-    logger.info(f"Home location set to {lat:.6f}, {lon:.6f}")
+    
     return {"ok": True}
 
 
@@ -259,6 +256,17 @@ async def get_connection():
     result["polling_enabled"] = poller._polling_enabled
     result["last_connected"] = poller._last_connected_ts
     return result
+
+
+@app.get("/api/new_messages")
+async def has_new_messages():
+    return {"ok": True, "new": store.has_new_message}
+
+
+@app.post("/api/new_messages")
+async def clear_new_messages():
+    store.has_new_message = False
+    return {"ok": True}
 
 
 @app.post("/api/polling/toggle")
@@ -373,7 +381,7 @@ async def reorder_repeaters(request: Request):
     if not pubkeys:
         return {"ok": False, "error": "No pubkeys provided"}
 
-    existing = {r["pubkey"]: r for r in cfg.repeaters}
+    existing = {r.pubkey: r for r in cfg.repeaters}
     new_list = [existing[pk] for pk in pubkeys if pk in existing]
     # Preserve any not in the list (shouldn't happen, but be safe)
     for pk, r in existing.items():

@@ -26,4 +26,4 @@ USER meshcore
 
 EXPOSE 8080
 
-CMD uvicorn app:app --host 127.0.0.1 --port 8088 & cd frontend && npm run dev -- --host 0.0.0.0 --port 8080
+CMD uvicorn app:app --host 127.0.0.1 --port 8088 --reload & cd frontend && npm run dev -- --host 0.0.0.0 --port 8080

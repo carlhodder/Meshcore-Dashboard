@@ -38,13 +38,10 @@ export default function Header() {
 
   useEffect(() => {
     const checkUnread = () => {
-      const lastSeen = parseFloat(
-        localStorage.getItem("meshcore_last_msg_seen") || "0",
-      );
-      fetch("/api/messages?hours=48&limit=1")
+      fetch("/api/new_messages")
         .then((res) => res.json())
-        .then((msgs) => {
-          setUnreadBadge(msgs.length > 0 && msgs[0].timestamp > lastSeen);
+        .then((r) => {
+          setUnreadBadge(r.new);
         })
         .catch(() => {});
     };
@@ -63,11 +60,11 @@ export default function Header() {
   };
 
   const markMessagesSeen = () => {
-    localStorage.setItem(
-      "meshcore_last_msg_seen",
-      (Date.now() / 1000).toString(),
-    );
-    setUnreadBadge(false);
+    if (unreadBadge){
+      setUnreadBadge(false);
+      fetch("/api/new_messages", { method: "POST" })
+        .catch(() => {});
+    }
   };
 
   const toggleNtfy = () => {

@@ -431,7 +431,6 @@ export default function MapPage() {
       if (c.configured) return;
       if (!c.lat || !c.lon) return;
       var latlng = [c.lat, c.lon];
-      var linked = c.pubkey ? isLinkedToMyRepeaters(c.pubkey) : false;
       var prefix2 = c.pubkey ? c.pubkey.substring(0, 2).toUpperCase() : "";
       var isKnown = !!(prefix2 && mapNodeNamesRef.current[prefix2]);
 
@@ -476,9 +475,6 @@ export default function MapPage() {
         "…</span></div>" +
         (isKnown
           ? '<div style="color:#22d3ee;font-size:0.7rem;margin-top:0.2rem">★ Known node</div>'
-          : "") +
-        (linked
-          ? '<div style="color:#f59e0b;font-size:0.7rem;margin-top:0.2rem">⬡ Linked to your mesh</div>'
           : "");
 
       var cm = window.L.circleMarker(latlng, {
@@ -511,15 +507,7 @@ export default function MapPage() {
           })(c.pubkey),
         );
 
-      var label = c.name || c.pubkey.substring(0, 8);
-      if (linked) {
-        var linkedNames = (adjacencyRef.current[c.pubkey] || [])
-          .filter((nPk) => !!markersRef.current[nPk])
-          .map((nPk) => nodeNameMapRef.current[nPk] || nPk.substring(0, 6));
-        if (linkedNames.length) label += " \u2192 " + linkedNames.join(", ");
-      }
-
-      cm.bindTooltip(label, {
+      cm.bindTooltip(c.name || c.pubkey.substring(0, 8), {
         permanent: true,
         direction: "top",
         className: "map-label",
@@ -1242,11 +1230,11 @@ export default function MapPage() {
           <button
             className={`${styles.mapBtn} ${styles.mapNeighboursBtn} ${showingNeighbourLinks ? styles.active : ""}`}
             onClick={() => {
-              setShowingNeighbourLinks((p) => !p);
-              if (!showingAllContacts) {
+              if (!showingNeighbourLinks && !showingAllContacts) {
                 // Show contacts with neighbours so the lines have a destination.
                 setShowingAllContacts(true);
               }
+              setShowingNeighbourLinks((p) => !p);
             }}
           >
             &#8767; Neighbours

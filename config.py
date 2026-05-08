@@ -17,6 +17,14 @@ _SETTINGS_FILE = Path(__file__).parent / "data/settings.json"
 
 from typing import List, Dict, Any
 
+class RepeaterConfig(BaseModel):
+    name: str
+    pubkey: str
+    path: str = ""
+    admin_pass: str = ""
+    lat: float | None = None
+    lon: float | None = None
+
 
 class UserConfigurables(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
@@ -28,7 +36,7 @@ class UserConfigurables(BaseModel):
     companion_type: int = CompanionType.TCP
     companion_host: str = ""
     companion_port: int = 5000
-    repeaters: List[Dict[str, Any]] = []
+    repeaters: List[RepeaterConfig] = []
     poll_interval_hours: int = 6
     stagger_delay_seconds: int = 30
     low_battery_percent: int = 20
@@ -162,6 +170,6 @@ class Config(UserConfigurables):
             return None
 
         for r in self.repeaters:
-            if r["pubkey"] == pubkey or r["pubkey"].startswith(pubkey):
+            if r.pubkey == pubkey or r.pubkey.startswith(pubkey):
                 return r
         return None
