@@ -1092,14 +1092,7 @@ export default function MapPage() {
                 <div className={`${styles.legendDot} ${styles.gateway}`}></div>{" "}
                 Gateway
               </div>
-              <div
-                className={styles.legendRow}
-                style={{
-                  fontSize: "0.68rem",
-                  color: "#64748b",
-                  margin: "0.25rem 0 0.1rem",
-                }}
-              >
+              <div className={`${styles.legendRow} ${styles.legendSubtitle}`}>
                 Node fill = status
               </div>
               <div className={styles.legendRow}>
@@ -1114,85 +1107,49 @@ export default function MapPage() {
                 <div className={`${styles.legendDot} ${styles.unknown}`}></div>{" "}
                 Not polled
               </div>
-              <div
-                className={styles.legendRow}
-                style={{
-                  fontSize: "0.68rem",
-                  color: "#64748b",
-                  marginTop: "0.25rem",
-                }}
-              >
+              <div className={`${styles.legendRow} ${styles.legendSubtitle}`}>
                 Contacts (All mode)
               </div>
               <div className={styles.legendRow}>
                 <div
-                  className={styles.legendDot}
-                  style={{ background: "#22d3ee" }}
+                  className={`${styles.legendDot} ${styles.dotContact}`}
                 ></div>{" "}
                 Contact
               </div>
               <div className={styles.legendRow}>
                 <div
-                  className={styles.legendDot}
-                  style={{ background: "#7c3aed" }}
+                  className={`${styles.legendDot} ${styles.dotAdvert}`}
                 ></div>{" "}
                 Advert
               </div>
-              <div
-                className={styles.legendRow}
-                style={{
-                  fontSize: "0.68rem",
-                  color: "#64748b",
-                  marginTop: "0.25rem",
-                }}
-              >
+              <div className={`${styles.legendRow} ${styles.legendSubtitle}`}>
                 Paths layer
               </div>
               <div className={styles.legendRow}>
                 <div
-                  className={styles.legendDot}
-                  style={{ background: "#34d399", borderRadius: "2px" }}
+                  className={`${styles.legendDot} ${styles.pathSingle}`}
                 ></div>{" "}
                 Single route
               </div>
               <div className={styles.legendRow}>
                 <div
-                  className={styles.legendDot}
-                  style={{ background: "#f59e0b", borderRadius: "2px" }}
+                  className={`${styles.legendDot} ${styles.pathShared}`}
                 ></div>{" "}
                 Shared segment
               </div>
-              <div
-                className={styles.legendRow}
-                style={{
-                  fontSize: "0.68rem",
-                  color: "#64748b",
-                  marginTop: "0.25rem",
-                }}
-              >
+              <div className={`${styles.legendRow} ${styles.legendSubtitle}`}>
                 Msg paths layer
               </div>
               <div className={styles.legendRow}>
-                <div
-                  className={styles.legendDot}
-                  style={{ background: "#a78bfa", borderRadius: "2px" }}
-                ></div>{" "}
+                <div className={`${styles.legendDot} ${styles.pathMsg}`}></div>{" "}
                 Message path
               </div>
-              <div
-                className={styles.legendRow}
-                style={{
-                  fontSize: "0.68rem",
-                  color: "#64748b",
-                  marginTop: "0.25rem",
-                }}
-              >
+              <div className={`${styles.legendRow} ${styles.legendSubtitle}`}>
                 Neighbours layer
               </div>
               <div className={styles.legendRow}>
                 <div
-                  className={styles.legendDot}
-                  style={{ background: "#22d3ee", borderRadius: "2px" }}
+                  className={`${styles.legendDot} ${styles.pathNeighbour}`}
                 ></div>{" "}
                 Neighbour link (SNR)
               </div>
