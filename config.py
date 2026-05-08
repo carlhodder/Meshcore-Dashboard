@@ -33,6 +33,7 @@ class UserConfigurables(BaseModel):
         SERIAL_USB = 1
         TCP = 2
 
+    polling_enabled: bool = True
     companion_type: int = CompanionType.TCP
     companion_host: str = ""
     companion_port: int = 5000

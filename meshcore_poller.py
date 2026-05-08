@@ -44,7 +44,6 @@ class MeshcorePoller:
         self._rx_log_sub = None  # all LoRa packets heard — SNR/RSSI/type
         self._advert_sub = None  # node advertisement beacons
         self._telemetry_sub = None  # companion base telemetry (battery)
-        self._polling_enabled = True  # duty-cycle auto-poll on/off
         self._recent_events: deque = deque(maxlen=200)  # live mesh activity feed
         self._node_id_name_cache: dict = (
             self.store.load_node_names()
@@ -144,13 +143,6 @@ class MeshcorePoller:
     def get_recent_events(self, limit: int = 100) -> list:
         return list(self._recent_events)[:limit]
 
-    def toggle_polling(self) -> bool:
-        """Toggle duty-cycle polling on/off. Returns new state (True = enabled)."""
-        self._polling_enabled = not self._polling_enabled
-        state = "enabled" if self._polling_enabled else "disabled"
-        logger.info(f"Duty-cycle polling {state}")
-        return self._polling_enabled
-
     async def _connect(self):
         host = self._cfg.companion_host
         port = self._cfg.companion_port
@@ -206,7 +198,7 @@ class MeshcorePoller:
                 )
                 break
 
-            if self._polling_enabled:
+            if self._cfg.polling_enabled:
                 await self._refresh_contacts(silent=True)
                 stagger = self._cfg.stagger_delay_seconds
                 now_ts = time.time()
@@ -251,7 +243,7 @@ class MeshcorePoller:
                     await self._fetch_companion_telemetry()
                 await self._interruptible_sleep(30)
             else:
-                logger.debug("Duty-cycle polling paused — skipping this cycle")
+                logger.debug("Polling paused — skipping this cycle")
 
         self._unsubscribe_messages()
 

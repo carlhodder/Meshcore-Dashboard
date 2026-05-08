@@ -253,7 +253,7 @@ async def get_connection():
         )
     if bat > 0:
         result["battery_mv"] = bat
-    result["polling_enabled"] = poller._polling_enabled
+    result["polling_enabled"] = cfg.polling_enabled
     result["last_connected"] = poller._last_connected_ts
     return result
 
@@ -272,8 +272,14 @@ async def clear_new_messages():
 @app.post("/api/polling/toggle")
 async def toggle_polling():
     """Toggle duty-cycle repeater polling on or off."""
-    enabled = poller.toggle_polling()
-    return {"ok": True, "polling_enabled": enabled}
+    try:
+        cfg.polling_enabled = not cfg.polling_enabled
+        cfg.save()
+        logger.info(f"Polling {"enabled" if cfg.polling_enabled else "disabled"}")
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    
+    return {"ok": True, "polling_enabled": cfg.polling_enabled}
 
 
 @app.post("/api/disconnect")
