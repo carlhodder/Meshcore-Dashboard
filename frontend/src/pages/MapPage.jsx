@@ -480,7 +480,7 @@ export default function MapPage() {
       var cm = window.L.circleMarker(latlng, {
         radius: 7,
         color: ringColor,
-        weight: linked ? 2 : 1.5,
+        weight: 2,
         fillColor: fillColor,
         fillOpacity: 0.75,
         opacity: 0.9,
