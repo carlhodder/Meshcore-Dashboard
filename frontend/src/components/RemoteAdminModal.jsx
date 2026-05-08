@@ -40,16 +40,27 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
   };
 
   const handleSend = async () => {
-    if (!cmd.trim() || !isLoggedIn) return;
+    if (!cmd ||!cmd.trim() || !isLoggedIn) return;
+    cmd = cmd.trim()
 
-    const commandToSend = cmd;
+    // Add warnings for a couple of commands that could leave you stranded
+    if (cmd.toLowerCase() == 'set repeat off') {
+      if (!confirm("WARNING: This will also stop responding to login/commands if they hop, only direct connections will work after this. Are you sure?")){
+        return;
+      }
+    }
+    if (cmd.toLowerCase() == 'start ota') {
+      if (!confirm("WARNING: This can leave the repeater in a broken state, are you sure? (and if nrf52 did you flash the bootloader first?)")){
+        return;
+      }
+    }
     setCmd("");
     setIsLoading(true);
-    addLine(`> ${commandToSend}`);
+    addLine(`> ${cmd}`);
 
     try {
       const res = await fetch(
-        `/api/cli_cmd/${encodeURIComponent(pubkey)}/${encodeURIComponent(commandToSend)}`,
+        `/api/cli_cmd/${encodeURIComponent(pubkey)}/${encodeURIComponent(cmd)}`,
         {
           method: "POST",
         },
