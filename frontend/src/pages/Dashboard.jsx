@@ -324,12 +324,6 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div>
-                  <button
-                    onClick={(e) => togglePauseRepeater(r.pubkey, e)}
-                    className={`${styles["card-pause-btn"]}`}
-                  >
-                    {r.paused ? "▶" : "⏸"}
-                  </button>
                   <span className={`status-dot ${statusClass}`}></span>
                 </div>
               </div>
@@ -488,7 +482,7 @@ export default function Dashboard() {
                     return (
                       <button
                         className={pingClass}
-                        disabled={pingDisabled}
+                        disabled={pingDisabled || r.paused}
                         onClick={(e) => pingRepeater(r.pubkey, e)}
                       >
                         {pingLabel}
@@ -536,6 +530,14 @@ export default function Dashboard() {
                           }}
                         >
                           Remote Admin
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            setMenuOpen(null);
+                            togglePauseRepeater(r.pubkey, e);
+                          }}
+                        >
+                          {r.paused ? "Start" : "Pause"} Polling
                         </button>
                       </div>
                     )}
