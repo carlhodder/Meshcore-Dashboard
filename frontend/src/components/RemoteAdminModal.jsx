@@ -41,7 +41,6 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
 
   const handleSend = async () => {
     if (!cmd ||!cmd.trim() || !isLoggedIn) return;
-    cmd = cmd.trim()
 
     // Add warnings for a couple of commands that could leave you stranded
     if (cmd.toLowerCase() == 'set repeat off') {
@@ -116,7 +115,7 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
               type="text"
               className={styles.input}
               value={cmd}
-              onInput={(e) => setCmd(e.target.value)}
+              onInput={(e) => setCmd((e.target.value || "").trim())}
               onKeyDown={handleKeyDown}
               disabled={!isLoggedIn || isLoading}
               autoFocus

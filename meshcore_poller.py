@@ -1764,14 +1764,14 @@ class MeshcorePoller:
                 return (
                     event.type == EventType.CONTACT_MSG_RECV and "text" in event.payload
                 )
-            self.store.save_repeater_command_message(self, repeater_cfg.pubkey, True, cmd)
+            self.store.save_repeater_command_message(repeater_cfg.pubkey, True, cmd)
             result = await self._sync_request_remote_cmd(
                 pubkey, cmd, validator, contact, timeout=10
             )
             if result is None:
                 return {"ok": False, "error": f"({cmd} timed out)"}
 
-            self.store.save_repeater_command_message(self, repeater_cfg.pubkey, False, result.payload["text"])
+            self.store.save_repeater_command_message(repeater_cfg.pubkey, False, result.payload["text"])
             return {"ok": True, "text": result.payload["text"]}
         except Exception as e:
             logger.error(f"[{name}] CLI command error: {e}")
