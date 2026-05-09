@@ -26,4 +26,4 @@ RUN cd frontend && npm install
 
 EXPOSE 8080
 
-CMD uvicorn app:app --host 127.0.0.1 --port 8088 --reload & cd frontend && npm run dev -- --host 0.0.0.0 --port 8080
+CMD (trap 'kill 0' SIGINT; uvicorn app:app --host 127.0.0.1 --port 8088 --reload & cd frontend && npm run dev -- --host 0.0.0.0 --port 8080 & wait)

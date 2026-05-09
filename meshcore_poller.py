@@ -1324,6 +1324,9 @@ class MeshcorePoller:
             await self.__repeat_on_failure(
                 self._request_version, [pubkey, name, contact]
             )
+            # The FW request can update the clock, so refresh the local repeater state from data store afterwards
+            rep_state = self.store.get(pubkey)
+
         # Get clock if needed
         # (Do this last as we can lift the timestamp from the FW request and avoid a separate query)
         if success and (
@@ -1453,18 +1456,6 @@ class MeshcorePoller:
                 updates["packets_recv"] = status["nb_recv"]
             if "nb_sent" in status:
                 updates["packets_sent"] = status["nb_sent"]
-
-            # Firmware version — try several key names used across firmware versions
-            for fw_key in (
-                "fw_version",
-                "fw_ver",
-                "firmware_version",
-                "firmware",
-                "version",
-            ):
-                if fw_key in status and status[fw_key]:
-                    updates["fw_version"] = str(status[fw_key])
-                    break
 
             if updates:
                 self.store.update_repeater(pubkey, **updates)
@@ -1626,10 +1617,7 @@ class MeshcorePoller:
             if contact is None:
                 error += "Repeater not found in contacts — may be out of range. "
 
-        for r in self._cfg.repeaters:
-            if r.pubkey == pubkey or r.pubkey.startswith(pubkey) or pubkey.startswith(r.pubkey):
-                repeater_cfg = r
-                break
+        repeater_cfg = self._cfg.get_repeater(pubkey)
         if repeater_cfg is None:
             error += "Pubkey does not match any known repeaters."
 
