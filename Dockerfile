@@ -15,14 +15,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Install frontend dependencies
-RUN cd frontend && npm install
-
 # Create non-root user and data directory, fix permissions
 RUN useradd -m meshcore \
     && chown -R meshcore:meshcore /app
 
 USER meshcore
+
+# Install frontend dependencies
+RUN cd frontend && npm install
 
 EXPOSE 8080
 
