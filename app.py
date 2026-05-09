@@ -387,8 +387,8 @@ async def save_settings(request: Request):
 async def reorder_repeaters(request: Request):
     """Reorder repeaters in settings and in the live data store."""
     body = await request.json()
-    pubkeys = body.get("pubkeys", [])
-    if not pubkeys:
+    pubkeys = body.get("pubkeys", None)
+    if pubkeys is None:
         return {"ok": False, "error": "No pubkeys provided"}
 
     existing = {r.pubkey: r for r in cfg.repeaters}
