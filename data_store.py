@@ -138,6 +138,7 @@ def metric(field, metric_label=None, metric_default=None):
     return field
 
 class RepeaterState(BaseDbModel):
+    # Fields / db backed current state.
     pubkey = TextField(primary_key=True)
     name = TextField(default="")
     time = FloatField(null=True, default=None)
@@ -468,11 +469,12 @@ class DataStore:
             result = []
             for pubkey, r in self._repeaters.items():
                 data = r.to_dict()
-                if not data["lat"] or not data["lon"]:
-                    repeater_cfg = self.cfg.get_repeater(pubkey)
-                    if repeater_cfg:
+                repeater_cfg = self.cfg.get_repeater(pubkey)
+                if repeater_cfg:
+                    if not data["lat"] or not data["lon"]:  
                         data["lat"] = data["lat"] or repeater_cfg.lat
                         data["lon"] = data["lon"] or repeater_cfg.lon
+                    data["paused"] = repeater_cfg.paused
                 result.append(data)
             return result
 

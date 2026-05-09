@@ -191,6 +191,27 @@
   color: #ef4444;
 }
 
+.card-paused {
+  color: #94a3b8 !important;
+}
+.card-paused * {
+  color: #94a3b8 !important;
+}
+
+.card-pause-btn
+{
+  color: #FFFFFF !important;
+  display: inline-block;
+  width: 28px;
+  height:28px;
+  line-height: 14px;
+  margin-right: 12px;
+  font-size: 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #1e293b;
+}
+
 .menu-container {
   position: relative;
   display: inline-block;

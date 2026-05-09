@@ -36,7 +36,8 @@ function batteryClass(mv) {
   return styles["metric-bad"];
 }
 
-function batteryColor(mv) {
+function batteryColor(mv, paused) {
+  if (paused) return "#94a3b8"
   if (mv == null) return "#FFFFFF";
   if (mv >= 3800) return "#22c55e";
   if (mv >= 3500) return "#eab308";
@@ -92,7 +93,6 @@ export default function Dashboard() {
   const [historyNode, setHistoryNode] = useState(null);
   const [remoteAdminNode, setRemoteAdminNode] = useState(null);
   const [menuOpen, setMenuOpen] = useState(null);
-  const [cardOrder, setCardOrder] = useState([]);
   const [pingStates, setPingStates] = useState({});
 
   useEffect(() => {
@@ -103,17 +103,6 @@ export default function Dashboard() {
     };
     document.addEventListener("click", handleClick);
     return () => document.removeEventListener("click", handleClick);
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/settings")
-      .then((res) => res.json())
-      .then((s) => {
-        if (s.repeaters && s.repeaters.length > 0) {
-          setCardOrder(s.repeaters.map((r) => r.pubkey));
-        }
-      })
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -140,33 +129,25 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // Poll repeaters initially, then use SSE
+  // Poll repeaters
   useEffect(() => {
-    fetch("/api/repeaters")
-      .then((res) => res.json())
-      .then((data) => {
-        setRepeaters(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error(err);
-        setLoading(false);
-      });
-
-    const evtSource = new EventSource("/api/stream");
-    evtSource.addEventListener("update", (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        setRepeaters(data);
-      } catch (err) {
-        console.error("SSE parse error:", err);
-      }
-    });
-
-    return () => {
-      evtSource.close();
-    };
+    updateRepeaterData();
+    const interval = setInterval(() => {updateRepeaterData()}, 5000);
+    return () => clearInterval(interval);
   }, []);
+
+  const updateRepeaterData = async () => {
+    fetch("/api/repeaters")
+        .then((res) => res.json())
+        .then((data) => {
+          setRepeaters(data);
+          setLoading(false);
+        })
+        .catch((err) => {
+          console.error(err);
+          setLoading(false);
+        });
+  }
 
   const pingRepeater = async (pubkey, e) => {
     e.stopPropagation();
@@ -218,6 +199,20 @@ export default function Dashboard() {
     }
   };
 
+  const togglePauseRepeater = async (pubkey, e) => {
+    e.stopPropagation();
+    try {
+      await fetch('/api/repeater/pause', { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({pubkey: pubkey})
+      });
+      await updateRepeaterData();
+    } catch (err) {
+      console.log(err);
+    }
+  }
+
   if (loading)
     return (
       <div className={`${styles["no-data"]}`}>
@@ -230,41 +225,33 @@ export default function Dashboard() {
     if (rep.pubkey) prefixToName[rep.pubkey.substring(0, 2)] = rep.name;
   });
 
-  const sortedRepeaters = [...repeaters].sort((a, b) => {
-    if (!cardOrder.length) return 0;
-    const ai = cardOrder.indexOf(a.pubkey);
-    const bi = cardOrder.indexOf(b.pubkey);
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
-    return ai - bi;
-  });
-
   return (
     <>
       <div className={`${styles["grid"]}`} id="repeaterGrid">
-        {sortedRepeaters.map((r) => {
+        {repeaters.map((r) => {
           const bPct = batteryPercent(r.battery_mv);
           const isLowBat = r.battery_mv > 0 && bPct <= 25; // 25% low bat threshold
           const isOffline = r.last_poll_ok === false;
 
           const statusClass =
-            r.last_poll_ok === true
-              ? "online"
-              : r.last_poll_ok === false
-                ? "offline"
-                : "unknown";
-          const hopsLabel =
-            r.last_seen_epoch > 0
-              ? r.hops === 0
-                ? "Direct"
-                : `${r.hops} hop(s)`
-              : "--";
+            r.paused ? "paused" :
+              r.last_poll_ok === true
+                ? "online"
+                : r.last_poll_ok === false
+                  ? "offline"
+                  : "unknown";
+            const hopsLabel =
+              r.last_seen_epoch > 0
+                ? r.hops === 0
+                  ? "Direct"
+                  : `${r.hops} hop(s)`
+                : "--";
 
           const routeChain = buildRouteChain(r, prefixToName);
 
           return (
             <div
-              className={`${styles["card"]}`}
+              className={`${styles["card"]} ${r.paused ? styles['card-paused'] : ""}`}
               key={r.pubkey}
               onClick={(e) => {
                 if (
@@ -276,7 +263,7 @@ export default function Dashboard() {
               }}
             >
               <div className={`${styles["battery-warning-container"]}`}>
-                {isLowBat && (
+                {isLowBat && !r.paused && (
                   <div className={`${styles["battery-warning"]}`}>
                     LOW BATTERY - {bPct}%
                   </div>
@@ -289,7 +276,15 @@ export default function Dashboard() {
                     {r.pubkey_short || r.pubkey.substring(0, 12)}
                   </div>
                 </div>
-                <span className={`status-dot ${statusClass}`}></span>
+                <div>
+                  <button 
+                    onClick={(e) => togglePauseRepeater(r.pubkey, e)} 
+                    className={`${styles["card-pause-btn"]}`}
+                  >
+                    {r.paused ? "▶" : "⏸"}
+                  </button>
+                  <span className={`status-dot ${statusClass}`}></span>
+                </div>
               </div>
               <div className={`${styles["metrics"]}`}>
                 <div className={`${styles["metric"]}`}>
@@ -310,7 +305,7 @@ export default function Dashboard() {
                       className={`${styles["bar-fill"]}`}
                       style={{
                         width: `${bPct}%`,
-                        background: batteryColor(r.battery_mv),
+                        background: batteryColor(r.battery_mv, r.paused),
                       }}
                     ></div>
                   </div>

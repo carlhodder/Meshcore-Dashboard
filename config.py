@@ -24,6 +24,7 @@ class RepeaterConfig(BaseModel):
     admin_pass: str = ""
     lat: float | None = None
     lon: float | None = None
+    paused: bool = False
 
 
 class UserConfigurables(BaseModel):
@@ -174,3 +175,12 @@ class Config(UserConfigurables):
             if r.pubkey == pubkey or r.pubkey.startswith(pubkey):
                 return r
         return None
+    
+    def toggle_pause_repeater(self, pubkey):
+        repeater = self.get_repeater(pubkey)
+        if repeater is not None:
+            repeater.paused = not repeater.paused
+            self.save()
+        return repeater.paused
+
+

@@ -1227,6 +1227,9 @@ class MeshcorePoller:
         return False
 
     async def _poll_repeater(self, contact, repeater_cfg, manual=False):
+        if repeater_cfg.paused:
+            return
+        
         pubkey = repeater_cfg.pubkey
         name = repeater_cfg.name
         rep_state = self.store.get(pubkey)

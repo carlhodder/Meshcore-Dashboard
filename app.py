@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Request, UploadFile
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from pydantic import ValidationError
@@ -88,6 +88,21 @@ if frontend_dist.exists():
 @app.get("/api/repeaters")
 async def get_repeaters():
     return store.get_all()
+
+
+@app.post("/api/repeater/pause")
+async def toggle_pause_repeater(request: Request):
+    body = await request.json()
+    pubkey = body.get("pubkey", None)
+    if pubkey is None:
+        return {"ok": False, "error": "pubkey key missing"}
+    try:
+        cfg.toggle_pause_repeater(pubkey)
+        store.sync_repeaters()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    
+    return {"ok": True}
 
 
 @app.get("/api/neighbours")
@@ -202,17 +217,6 @@ async def get_logs(
 ):
     """Return recent activity logs, optionally filtered by level and/or message text."""
     return store.get_activity_logs(hours=hours, level=level, search=search, limit=limit)
-
-
-@app.get("/api/stream")
-async def event_stream():
-    async def generate():
-        while True:
-            data = json.dumps(store.get_all())
-            yield f"event: update\ndata: {data}\n\n"
-            await asyncio.sleep(5)
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 # --- Connection API ---
@@ -393,9 +397,12 @@ async def reorder_repeaters(request: Request):
     for pk, r in existing.items():
         if pk not in pubkeys:
             new_list.append(r)
-    cfg.repeaters = new_list
-    cfg.save()
-    store.reorder(pubkeys)
+    try:
+        cfg.repeaters = new_list
+        cfg.save()
+        store.reorder(pubkeys)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
     return {"ok": True}
 
 
