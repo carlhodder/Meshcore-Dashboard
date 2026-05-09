@@ -1301,7 +1301,7 @@ class MeshcorePoller:
                 manual
                 or time.time()
                 >= rep_state["last_neighbour_poll"]
-                + self._cfg.neighbours_check_hours * 3600
+                + self._cfg.neighbours_check_hours * 60 * 60
             )
         ):
             if not self._running or self._needs_reconnect or self._stay_disconnected:

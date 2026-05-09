@@ -14,9 +14,13 @@
   transition:
     border-color 0.3s,
     transform 0.2s;
-  cursor: pointer;
   display: flex;
   flex-direction: column;
+}
+
+.card-history-block {
+  cursor: pointer;
+  height: 100%;
 }
 
 .drag-over {
@@ -141,6 +145,10 @@
   transition: width 0.5s ease;
 }
 
+.battery-warning-container {
+
+}
+
 .battery-warning {
   background: #ef444430;
   border: 1px solid #ef4444;
@@ -187,6 +195,8 @@
 }
 
 .card-footer-seen {
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .card-footer-route {
@@ -204,10 +214,10 @@
 }
 
 .card-paused {
-  color: #94a3b8 !important;
+  color: #64748b !important;
 }
 .card-paused * {
-  color: #94a3b8 !important;
+  color: #64748b !important;
 }
 
 .menu-container {
@@ -230,6 +240,7 @@
 }
 
 .popup-menu {
+  display: block;
   position: absolute;
   right: 0;
   background: #1e293b;
@@ -239,6 +250,12 @@
   z-index: 10;
   min-width: 120px;
   padding: 0.25rem 0;
+  bottom: 100%;
+}
+
+.popup-menu-poll-intervals {
+  bottom: auto;
+  right: auto;
 }
 
 .popup-menu button {

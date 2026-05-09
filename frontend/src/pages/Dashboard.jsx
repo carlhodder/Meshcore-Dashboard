@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "preact/hooks";
+import { format } from "date-fns";
 import styles from "./Dashboard.module.css";
 import HistoryModal from "../components/HistoryModal";
 import RemoteAdminModal from "../components/RemoteAdminModal";
@@ -87,6 +88,14 @@ function buildRouteChain(r, prefixToName) {
   return chain.join(" \u2192 ");
 }
 
+function timeout_date_string(timestamp) {
+  if (timestamp == 0) {
+    return ""
+  } else {
+    return format(new Date(timestamp * 1000), 'yyyy-MM-dd h:mm aa');
+  }
+}
+
 export default function Dashboard() {
   const [repeaters, setRepeaters] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -94,6 +103,7 @@ export default function Dashboard() {
   const [remoteAdminNode, setRemoteAdminNode] = useState(null);
   const [menuOpen, setMenuOpen] = useState(null);
   const [pingStates, setPingStates] = useState({});
+  const [lastPolledMenuOpen, setLastPolledMenuOpen] = useState(null);
 
   const dragItem = useRef(null);
   const dragOverItem = useRef(null);
@@ -126,6 +136,9 @@ export default function Dashboard() {
     const handleClick = (e) => {
       if (!e.target.closest(".menu-container")) {
         setMenuOpen(null);
+      }
+      if (!e.target.closest(styles["popup-menu-poll-intervals"])) {
+        setLastPolledMenuOpen(null);
       }
     };
     document.addEventListener("click", handleClick);
@@ -300,14 +313,6 @@ export default function Dashboard() {
                 e.currentTarget.classList.remove(styles["drag-over"]);
                 handleSort();
               }}
-              onClick={(e) => {
-                if (
-                  e.target.tagName === "BUTTON" ||
-                  e.target.closest(".popup-menu")
-                )
-                  return;
-                setHistoryNode({ pubkey: r.pubkey, name: r.name });
-              }}
             >
               <div className={`${styles["battery-warning-container"]}`}>
                 {isLowBat && !r.paused && (
@@ -327,111 +332,152 @@ export default function Dashboard() {
                   <span className={`status-dot ${statusClass}`}></span>
                 </div>
               </div>
-              <div className={`${styles["metrics"]}`}>
-                <div className={`${styles["metric"]}`}>
-                  <div className={`${styles["metric-label"]}`}>Battery</div>
-                  <div
-                    className={`metric-value val-battery ${batteryClass(r.battery_mv)}`}
-                  >
-                    {r.battery_mv != null ? bPct : "--"}
-                    <span className={`${styles["metric-unit"]}`}> %</span>
-                  </div>
-                  <div className={`${styles["metric-sub"]} sub-battery`}>
-                    {r.battery_voltage != null
-                      ? r.battery_voltage.toFixed(2) + " V"
-                      : "--"}
-                  </div>
-                  <div className={`${styles["bar-bg"]}`}>
-                    <div
-                      className={`${styles["bar-fill"]}`}
-                      style={{
-                        width: `${bPct}%`,
-                        background: batteryColor(r.battery_mv, r.paused),
-                      }}
-                    ></div>
-                  </div>
-                </div>
-                <div className={`${styles["metric"]}`}>
-                  <div className={`${styles["metric-label"]}`}>RSSI</div>
-                  <div
-                    className={`${styles["metric-value"]} val-rssi ${signalClass(r.rssi)}`}
-                  >
-                    {r.rssi != null ? r.rssi : "--"}
-                    <span className={`${styles["metric-unit"]}`}> dBm</span>
-                  </div>
-                </div>
-                <div className={`${styles["metric"]}`}>
-                  <div className={`${styles["metric-label"]}`}>SNR</div>
-                  <div
-                    className={`${styles["metric-value"]} val-snr ${snrClass(r.snr)}`}
-                  >
-                    {r.snr != null ? r.snr.toFixed(1) : "--"}
-                    <span className={`${styles["metric-unit"]}`}> dB</span>
-                  </div>
-                </div>
-                <div className={`${styles["metric"]}`}>
-                  <div className={`${styles["metric-label"]}`}>Noise Floor</div>
-                  <div
-                    className={`${styles["metric-value"]} val-noise ${noiseClass(r.noise_floor)}`}
-                  >
-                    {r.noise_floor != null ? r.noise_floor : "--"}
-                    <span className={`${styles["metric-unit"]}`}> dBm</span>
-                  </div>
-                </div>
-                <div className={`${styles["metric"]}`}>
-                  <div className={`${styles["metric-label"]}`}>Uptime</div>
-                  <div className={`${styles["metric-value"]} val-uptime`}>
-                    {formatUptime(r.uptime_seconds)}
-                  </div>
-                </div>
-                <div className={`${styles["metric"]}`}>
-                  <div className={`${styles["metric-label"]}`}>Hops</div>
-                  <div className={`${styles["metric-value"]} val-hops`}>
-                    {hopsLabel}
-                  </div>
-                </div>
-                {r.temperature != null && (
+              <div className={`${styles["card-history-block"]}`}
+                onClick={(e) => {
+                  if (
+                    e.target.tagName === "BUTTON" ||
+                    e.target.closest(".popup-menu")
+                  )
+                    return;
+                  setHistoryNode({ pubkey: r.pubkey, name: r.name });
+                }}
+              >
+                <div className={`${styles["metrics"]}`}>
                   <div className={`${styles["metric"]}`}>
-                    <div className={`${styles["metric-label"]}`}>Temp</div>
+                    <div className={`${styles["metric-label"]}`}>Battery</div>
                     <div
-                      className={`${styles["metric-value"]} val-temp ${tempClass(r.temperature)}`}
+                      className={`metric-value val-battery ${batteryClass(r.battery_mv)}`}
                     >
-                      {r.temperature.toFixed(1)}
-                      <span className={`${styles["metric-unit"]}`}> °C</span>
-                    </div>
-                  </div>
-                )}
-                {r.humidity != null && (
-                  <div className={`${styles["metric"]}`}>
-                    <div className={`${styles["metric-label"]}`}>Humidity</div>
-                    <div className={`${styles["metric-value"]} val-humidity`}>
-                      {r.humidity.toFixed(1)}
+                      {r.battery_mv != null ? bPct : "--"}
                       <span className={`${styles["metric-unit"]}`}> %</span>
                     </div>
-                  </div>
-                )}
-                {r.time_offset_seconds != null &&
-                  Math.abs(r.time_offset_seconds) >= 30 && (
-                    <div className={`${styles["metric"]}`}>
-                      <div className={`${styles["metric-label"]}`}>
-                        Time Error
-                      </div>
+                    <div className={`${styles["metric-sub"]} sub-battery`}>
+                      {r.battery_voltage != null
+                        ? r.battery_voltage.toFixed(2) + " V"
+                        : "--"}
+                    </div>
+                    <div className={`${styles["bar-bg"]}`}>
                       <div
-                        className={`${styles["metric-value"]} val-time-error`}
-                        style={{ color: "#ef4444" }}
+                        className={`${styles["bar-fill"]}`}
+                        style={{
+                          width: `${bPct}%`,
+                          background: batteryColor(r.battery_mv, r.paused),
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                  <div className={`${styles["metric"]}`}>
+                    <div className={`${styles["metric-label"]}`}>RSSI</div>
+                    <div
+                      className={`${styles["metric-value"]} val-rssi ${signalClass(r.rssi)}`}
+                    >
+                      {r.rssi != null ? r.rssi : "--"}
+                      <span className={`${styles["metric-unit"]}`}> dBm</span>
+                    </div>
+                  </div>
+                  <div className={`${styles["metric"]}`}>
+                    <div className={`${styles["metric-label"]}`}>SNR</div>
+                    <div
+                      className={`${styles["metric-value"]} val-snr ${snrClass(r.snr)}`}
+                    >
+                      {r.snr != null ? r.snr.toFixed(1) : "--"}
+                      <span className={`${styles["metric-unit"]}`}> dB</span>
+                    </div>
+                  </div>
+                  <div className={`${styles["metric"]}`}>
+                    <div className={`${styles["metric-label"]}`}>Noise Floor</div>
+                    <div
+                      className={`${styles["metric-value"]} val-noise ${noiseClass(r.noise_floor)}`}
+                    >
+                      {r.noise_floor != null ? r.noise_floor : "--"}
+                      <span className={`${styles["metric-unit"]}`}> dBm</span>
+                    </div>
+                  </div>
+                  <div className={`${styles["metric"]}`}>
+                    <div className={`${styles["metric-label"]}`}>Uptime</div>
+                    <div className={`${styles["metric-value"]} val-uptime`}>
+                      {formatUptime(r.uptime_seconds)}
+                    </div>
+                  </div>
+                  <div className={`${styles["metric"]}`}>
+                    <div className={`${styles["metric-label"]}`}>Hops</div>
+                    <div className={`${styles["metric-value"]} val-hops`}>
+                      {hopsLabel}
+                    </div>
+                  </div>
+                  {r.temperature != null && (
+                    <div className={`${styles["metric"]}`}>
+                      <div className={`${styles["metric-label"]}`}>Temp</div>
+                      <div
+                        className={`${styles["metric-value"]} val-temp ${tempClass(r.temperature)}`}
                       >
-                        {r.time_offset_seconds > 0 ? "+" : ""}
-                        {Math.max(Math.min(r.time_offset_seconds, 999), -999)}
-                        <span className={`${styles["metric-unit"]}`}> s</span>
+                        {r.temperature.toFixed(1)}
+                        <span className={`${styles["metric-unit"]}`}> °C</span>
                       </div>
                     </div>
                   )}
+                  {r.humidity != null && (
+                    <div className={`${styles["metric"]}`}>
+                      <div className={`${styles["metric-label"]}`}>Humidity</div>
+                      <div className={`${styles["metric-value"]} val-humidity`}>
+                        {r.humidity.toFixed(1)}
+                        <span className={`${styles["metric-unit"]}`}> %</span>
+                      </div>
+                    </div>
+                  )}
+                  {r.time_offset_seconds != null &&
+                    Math.abs(r.time_offset_seconds) >= 30 && (
+                      <div className={`${styles["metric"]}`}>
+                        <div className={`${styles["metric-label"]}`}>
+                          Time Error
+                        </div>
+                        <div
+                          className={`${styles["metric-value"]} val-time-error`}
+                          style={{ color: "#ef4444" }}
+                        >
+                          {r.time_offset_seconds > 0 ? "+" : ""}
+                          {Math.max(Math.min(r.time_offset_seconds, 999), -999)}
+                          <span className={`${styles["metric-unit"]}`}> s</span>
+                        </div>
+                      </div>
+                    )}
+                </div>
               </div>
               <div className={`${styles["card-footer"]}`}>
                 <div className={`${styles["card-footer-left"]}`}>
-                  <div className={`${styles["card-footer-seen"]}`}>
-                    Last seen: {timeAgo(r.last_seen_epoch)}
+                  <div>
+                    <span 
+                      className={`${styles["card-footer-seen"]}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLastPolledMenuOpen(lastPolledMenuOpen == r.pubkey ? null : r.pubkey);
+                        setMenuOpen(null);
+                      }}>Last seen: {timeAgo(r.last_seen_epoch)}</span>
                   </div>
+                  {lastPolledMenuOpen === r.pubkey && (
+                      <div className={`${styles["popup-menu"]} ${styles["popup-menu-poll-intervals"]}`}>
+                        <table>
+                          <tbody>
+                            <tr>
+                              <td>Last poll:</td>
+                              <td>{timeout_date_string(r.last_poll_timestamp)}</td>
+                            </tr>
+                            <tr>
+                              <td>Last neighbours poll:</td>
+                              <td>{timeout_date_string(r.last_neighbour_poll)}</td>
+                            </tr>
+                            <tr>
+                              <td>Last clock poll:</td>
+                              <td>{timeout_date_string(r.last_clock_poll)}</td>
+                            </tr>
+                            <tr>
+                              <td>Last FW poll:</td>
+                              <td>{timeout_date_string(r.last_fw_poll)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                  )}
                   <div className={`${styles["card-footer-route-container"]}`}>
                     {routeChain && (
                       <div className={`${styles["card-footer-route"]}`}>
@@ -498,21 +544,13 @@ export default function Dashboard() {
                       onClick={(e) => {
                         e.stopPropagation();
                         setMenuOpen(menuOpen === r.pubkey ? null : r.pubkey);
+                        setLastPolledMenuOpen(null);
                       }}
                     >
                       &#8942;
                     </button>
                     {menuOpen === r.pubkey && (
-                      <div
-                        className={`${styles["popup-menu"]}`}
-                        style={{
-                          display: "block",
-                          position: "absolute",
-                          right: 0,
-                          bottom: "100%",
-                          zIndex: 10,
-                        }}
-                      >
+                      <div className={`${styles["popup-menu"]}`}>
                         <button onClick={(e) => sendAdvert(r.pubkey, e)}>
                           Advert
                         </button>
