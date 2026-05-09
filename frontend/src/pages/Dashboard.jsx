@@ -1,4 +1,4 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect, useRef } from "preact/hooks";
 import styles from "./Dashboard.module.css";
 import HistoryModal from "../components/HistoryModal";
 import RemoteAdminModal from "../components/RemoteAdminModal";
@@ -37,7 +37,7 @@ function batteryClass(mv) {
 }
 
 function batteryColor(mv, paused) {
-  if (paused) return "#94a3b8"
+  if (paused) return "#94a3b8";
   if (mv == null) return "#FFFFFF";
   if (mv >= 3800) return "#22c55e";
   if (mv >= 3500) return "#eab308";
@@ -95,6 +95,33 @@ export default function Dashboard() {
   const [menuOpen, setMenuOpen] = useState(null);
   const [pingStates, setPingStates] = useState({});
 
+  const dragItem = useRef(null);
+  const dragOverItem = useRef(null);
+
+  const handleSort = async () => {
+    if (dragItem.current === null || dragOverItem.current === null) return;
+
+    let _repeaters = [...repeaters];
+    const draggedItemContent = _repeaters.splice(dragItem.current, 1)[0];
+    _repeaters.splice(dragOverItem.current, 0, draggedItemContent);
+
+    dragItem.current = null;
+    dragOverItem.current = null;
+
+    setRepeaters(_repeaters);
+
+    try {
+      const pubkeys = _repeaters.map((r) => r.pubkey);
+      await fetch("/api/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pubkeys }),
+      });
+    } catch (err) {
+      console.error("Failed to reorder repeaters", err);
+    }
+  };
+
   useEffect(() => {
     const handleClick = (e) => {
       if (!e.target.closest(".menu-container")) {
@@ -132,22 +159,24 @@ export default function Dashboard() {
   // Poll repeaters
   useEffect(() => {
     updateRepeaterData();
-    const interval = setInterval(() => {updateRepeaterData()}, 5000);
+    const interval = setInterval(() => {
+      updateRepeaterData();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
   const updateRepeaterData = async () => {
     fetch("/api/repeaters")
-        .then((res) => res.json())
-        .then((data) => {
-          setRepeaters(data);
-          setLoading(false);
-        })
-        .catch((err) => {
-          console.error(err);
-          setLoading(false);
-        });
-  }
+      .then((res) => res.json())
+      .then((data) => {
+        setRepeaters(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setLoading(false);
+      });
+  };
 
   const pingRepeater = async (pubkey, e) => {
     e.stopPropagation();
@@ -202,16 +231,16 @@ export default function Dashboard() {
   const togglePauseRepeater = async (pubkey, e) => {
     e.stopPropagation();
     try {
-      await fetch('/api/repeater/pause', { 
-        method: "POST", 
+      await fetch("/api/repeater/pause", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({pubkey: pubkey})
+        body: JSON.stringify({ pubkey: pubkey }),
       });
       await updateRepeaterData();
     } catch (err) {
       console.log(err);
     }
-  }
+  };
 
   if (loading)
     return (
@@ -228,31 +257,49 @@ export default function Dashboard() {
   return (
     <>
       <div className={`${styles["grid"]}`} id="repeaterGrid">
-        {repeaters.map((r) => {
+        {repeaters.map((r, index) => {
           const bPct = batteryPercent(r.battery_mv);
           const isLowBat = r.battery_mv > 0 && bPct <= 25; // 25% low bat threshold
           const isOffline = r.last_poll_ok === false;
 
-          const statusClass =
-            r.paused ? "paused" :
-              r.last_poll_ok === true
-                ? "online"
-                : r.last_poll_ok === false
-                  ? "offline"
-                  : "unknown";
-            const hopsLabel =
-              r.last_seen_epoch > 0
-                ? r.hops === 0
-                  ? "Direct"
-                  : `${r.hops} hop(s)`
-                : "--";
+          const statusClass = r.paused
+            ? "paused"
+            : r.last_poll_ok === true
+              ? "online"
+              : r.last_poll_ok === false
+                ? "offline"
+                : "unknown";
+          const hopsLabel =
+            r.last_seen_epoch > 0
+              ? r.hops === 0
+                ? "Direct"
+                : `${r.hops} hop(s)`
+              : "--";
 
           const routeChain = buildRouteChain(r, prefixToName);
 
           return (
             <div
-              className={`${styles["card"]} ${r.paused ? styles['card-paused'] : ""}`}
+              className={`${styles["card"]} ${r.paused ? styles["card-paused"] : ""}`}
               key={r.pubkey}
+              draggable
+              onDragStart={(e) => {
+                dragItem.current = index;
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragEnter={(e) => {
+                dragOverItem.current = index;
+                e.currentTarget.classList.add(styles["drag-over"]);
+              }}
+              onDragLeave={(e) => {
+                e.currentTarget.classList.remove(styles["drag-over"]);
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.currentTarget.classList.remove(styles["drag-over"]);
+                handleSort();
+              }}
               onClick={(e) => {
                 if (
                   e.target.tagName === "BUTTON" ||
@@ -277,8 +324,8 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div>
-                  <button 
-                    onClick={(e) => togglePauseRepeater(r.pubkey, e)} 
+                  <button
+                    onClick={(e) => togglePauseRepeater(r.pubkey, e)}
                     className={`${styles["card-pause-btn"]}`}
                   >
                     {r.paused ? "▶" : "⏸"}
