@@ -264,53 +264,37 @@ class MeshcorePoller:
         # Update last-connected timestamp whenever we successfully poll
         self._last_connected_ts = time.time()
 
-        si = getattr(self.mc, "self_info", None) or {}
-        companion_pk = (
-            si.get("public_key") or si.get("pub_key") or si.get("pubkey") or ""
-        )
-
         try:
-            # Try req_status_sync on the companion if it appears as a contact
-            if companion_pk:
-                contact = self._find_contact(companion_pk)
+            # Try req_status on the companion
+            status = await self.mc.commands.req_status(timeout=10)
+            logger.info(f"[companion] req_status returned: {status!r}")
+            if isinstance(status, dict) and status.get("bat"):
+                self._companion_battery_mv = int(status["bat"])
                 logger.info(
-                    f"[companion] contact lookup for {companion_pk[:8]}: {'found' if contact else 'not found'} | contacts: {len(self._contacts)}"
+                    f"[companion] battery from status: {self._companion_battery_mv}mV"
                 )
-                if contact is not None:
-                    status = await self.mc.commands.req_status_sync(contact, timeout=10)
-                    logger.info(f"[companion] req_status_sync returned: {status!r}")
-                    if isinstance(status, dict) and status.get("bat"):
-                        self._companion_battery_mv = int(status["bat"])
-                        logger.info(
-                            f"[companion] battery from status: {self._companion_battery_mv}mV"
-                        )
-                        return
+                return
         except Exception as e:
-            logger.info(f"[companion] req_status_sync failed: {e}")
+            logger.info(f"[companion] req_status failed: {e}")
         try:
-            # Try req_telemetry_sync on the companion contact
-            if companion_pk:
-                contact = self._find_contact(companion_pk)
-                if contact is not None:
-                    telemetry = await self.mc.commands.req_telemetry_sync(
-                        contact, timeout=10
-                    )
-                    logger.info(
-                        f"[companion] req_telemetry_sync returned: {telemetry!r}"
-                    )
-                    sensors = telemetry if isinstance(telemetry, list) else []
-                    for sensor in sensors:
-                        sensor_type = sensor.get("type", "")
-                        value = sensor.get("value")
-                        ch = sensor.get("channel", -1)
-                        if sensor_type == "voltage" and value is not None:
-                            self._companion_battery_mv = int(float(value) * 1000)
-                            return
-                        elif sensor_type == "analog" and ch == 1 and value is not None:
-                            self._companion_battery_mv = int(float(value) * 1000)
-                            return
+            # Try req_telemetry on the companion
+            telemetry = await self.mc.commands.req_telemetry(timeout=10)
+            logger.info(
+                f"[companion] req_telemetry returned: {telemetry!r}"
+            )
+            sensors = telemetry if isinstance(telemetry, list) else []
+            for sensor in sensors:
+                sensor_type = sensor.get("type", "")
+                value = sensor.get("value")
+                ch = sensor.get("channel", -1)
+                if sensor_type == "voltage" and value is not None:
+                    self._companion_battery_mv = int(float(value) * 1000)
+                    return
+                elif sensor_type == "analog" and ch == 1 and value is not None:
+                    self._companion_battery_mv = int(float(value) * 1000)
+                    return
         except Exception as e:
-            logger.info(f"[companion] req_telemetry_sync failed: {e}")
+            logger.info(f"[companion] req_telemetry failed: {e}")
 
     # --- Device channel discovery ---
 
