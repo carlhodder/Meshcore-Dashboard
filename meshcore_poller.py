@@ -267,10 +267,10 @@ class MeshcorePoller:
         try:
             # Try get_bat on the companion
             status = await self.mc.commands.get_bat()
-            logger.info(f"[companion] get_bat returned: {status!r}")
-            if isinstance(status, dict) and status.get("level"):
-                self._companion_battery_mv = int(status["level"])
-                logger.info(
+            logger.debug(f"[companion] get_bat returned: {status!r}")
+            if status.type != EventType.ERROR and "level" in getattr(status, "payload", {}):
+                self._companion_battery_mv = int(status.payload["level"])
+                logger.debug(
                     f"[companion] battery from status: {self._companion_battery_mv}mV"
                 )
                 return
@@ -279,7 +279,7 @@ class MeshcorePoller:
         try:
             # Try get_self_telemetry on the companion
             telemetry = await self.mc.commands.get_self_telemetry()
-            logger.info(
+            logger.debug(
                 f"[companion] get_self_telemetry returned: {telemetry!r}"
             )
             sensors = telemetry if isinstance(telemetry, list) else []
