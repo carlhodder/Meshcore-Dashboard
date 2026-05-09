@@ -101,8 +101,17 @@ async def toggle_pause_repeater(request: Request):
         store.sync_repeaters()
     except Exception as e:
         return {"ok": False, "error": str(e)}
-    
     return {"ok": True}
+
+
+@app.get("/api/repeater/command_history/{pubkey}")
+async def get_repeater_command_history(pubkey: str):
+    if pubkey is None:
+        return {"ok": False, "error": "pubkey key missing"}
+    try:
+        return {"ok": True, "history": store.get_command_history(pubkey)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.get("/api/neighbours")

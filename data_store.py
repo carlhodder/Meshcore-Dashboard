@@ -828,3 +828,14 @@ class DataStore:
                     RepeaterCommandMessage.create(timestamp=ts, pubkey=pubkey, is_command=is_command, text=text)
             except Exception as e:
                 print(f"[DataStore] Error saving repeater cli cmd: {e}")
+
+    def get_command_history(self, pubkey, limit=200):
+        with self._lock:
+            try:   
+                with db.connection_context():
+                    query = RepeaterCommandMessage.select().order_by(RepeaterCommandMessage.id.desc()).where(RepeaterCommandMessage.pubkey == pubkey).limit(limit)
+                    result = list(query.dicts())
+                    result.reverse()
+                    return result
+            except Exception as e:
+                print(f"[DataStore] Error saving repeater cli cmd: {e}")

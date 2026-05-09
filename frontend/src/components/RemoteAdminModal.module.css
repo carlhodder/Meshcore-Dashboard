@@ -56,16 +56,16 @@
 .terminal-window {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
+  overflow-y: scroll;
   padding: 1rem;
   background: #000000;
   font-family: monospace;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .output-area {
   flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;

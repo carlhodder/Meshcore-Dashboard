@@ -18,6 +18,19 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
     setLines((prev) => [...prev, { text, isError }]);
   };
 
+  // Load history
+  useEffect(() => {
+    const data = fetch(`/api/repeater/command_history/${pubkey}`)
+    .then((r) => r.json())
+    .then(({history}) => {
+      let historyLines = [];
+      for (const line of history) {
+        historyLines.push({text: `${line.is_command ? "> " : ""}${line.text}`, isError: false});
+      }
+      setLines([...historyLines, ...lines]);
+    }).catch(() => {});
+  }, []);
+
   const handleLogin = async () => {
     setIsLoading(true);
     addLine(`> Logging in to ${name}...`);
@@ -109,7 +122,8 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
               ))}
             </div>
           </div>
-          <div className={styles["input-area"]}>
+        </div>
+        <div className={styles["input-area"]}>
             <span className={styles.prompt}>{">"}</span>
             <input
               type="text"
@@ -137,7 +151,6 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
               </button>
             </div>
           </div>
-        </div>
       </div>
     </div>
   );
