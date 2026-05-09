@@ -265,22 +265,22 @@ class MeshcorePoller:
         self._last_connected_ts = time.time()
 
         try:
-            # Try req_status on the companion
-            status = await self.mc.commands.req_status(timeout=10)
-            logger.info(f"[companion] req_status returned: {status!r}")
-            if isinstance(status, dict) and status.get("bat"):
-                self._companion_battery_mv = int(status["bat"])
+            # Try get_bat on the companion
+            status = await self.mc.commands.get_bat()
+            logger.info(f"[companion] get_bat returned: {status!r}")
+            if isinstance(status, dict) and status.get("level"):
+                self._companion_battery_mv = int(status["level"])
                 logger.info(
                     f"[companion] battery from status: {self._companion_battery_mv}mV"
                 )
                 return
         except Exception as e:
-            logger.info(f"[companion] req_status failed: {e}")
+            logger.info(f"[companion] get-bat failed: {e}")
         try:
-            # Try req_telemetry on the companion
-            telemetry = await self.mc.commands.req_telemetry(timeout=10)
+            # Try get_self_telemetry on the companion
+            telemetry = await self.mc.commands.get_self_telemetry()
             logger.info(
-                f"[companion] req_telemetry returned: {telemetry!r}"
+                f"[companion] get_self_telemetry returned: {telemetry!r}"
             )
             sensors = telemetry if isinstance(telemetry, list) else []
             for sensor in sensors:
@@ -294,7 +294,7 @@ class MeshcorePoller:
                     self._companion_battery_mv = int(float(value) * 1000)
                     return
         except Exception as e:
-            logger.info(f"[companion] req_telemetry failed: {e}")
+            logger.info(f"[companion] get_self_telemetry failed: {e}")
 
     # --- Device channel discovery ---
 
