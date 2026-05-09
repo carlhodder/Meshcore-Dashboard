@@ -868,7 +868,7 @@ class MeshcorePoller:
     async def _on_companion_telemetry(self, event):
         """Handle telemetry event from the companion node — extract battery."""
         try:
-            logger.info(
+            logger.debug(
                 f"[companion] telemetry event: type={getattr(event, 'type', None)!r} event={event!r}"
             )
             bat = None
@@ -894,9 +894,9 @@ class MeshcorePoller:
                 # Values < 10 are likely in volts — convert to mV
                 mv = int(float(bat) * 1000) if float(bat) < 10 else int(float(bat))
                 self._companion_battery_mv = mv
-                logger.info(f"[companion] battery from telemetry event: {mv}mV")
+                logger.debug(f"[companion] battery from telemetry event: {mv}mV")
         except Exception as e:
-            logger.debug(f"Error handling companion telemetry: {e}")
+            logger.info(f"Error handling companion telemetry: {e}")
 
     def _extract_ack_code(self, send_result) -> str:
         """Extract the expected ACK code from a send_msg / send_chan_msg result."""
