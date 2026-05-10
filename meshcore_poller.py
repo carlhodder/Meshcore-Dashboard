@@ -1645,18 +1645,13 @@ class MeshcorePoller:
             success = await self._login_to_repeater(contact, name, repeater_cfg.admin_pass)
             if not success:
                 return {"ok": False, "error": f"Failed to log in to {name}"}
-            result = await self.mc.commands.send_cmd(contact, "advert")
-            if result.type == EventType.ERROR:
-                logger.error(
-                    f"[{name}] Failed to send advert after login: {result.payload}"
-                )
-                return {
-                    "ok": False,
-                    "error": f"Failed to send advert after login: {result.payload}",
-                }
-            logger.info(f"[{name}] Flood advertisement command sent")
-            self._log_event("advert_sent", name=name, pubkey=pubkey)
-            return {"ok": True}
+            
+            result = await self._sync_request_remote_cmd(
+                pubkey, f"advert", lambda a: True, contact, timeout=10
+            )
+            if result is None:
+                return {"ok": False, "error": f"Filed to send advert, timed out)"}
+            return {"ok": True, "text": result.payload["text"]}
         except Exception as e:
             logger.error(f"[{name}] Failed to send advert: {e}")
             return {"ok": False, "error": str(e)}
@@ -1677,24 +1672,16 @@ class MeshcorePoller:
             success = await self._login_to_repeater(contact, name, repeater_cfg.admin_pass)
             if not success:
                 return {"ok": False, "error": f"Failed to log in to {name}"}
-            await asyncio.sleep(0.5)
-            result = await self.mc.commands.send_cmd(
-                contact, f"time {int(time.time() + 0.5)}"
+            
+            result = await self._sync_request_remote_cmd(
+                pubkey, f"time {int(time.time() + 0.5)}", lambda a: True, contact, timeout=10
             )
-            if result.type == EventType.ERROR:
-                logger.error(
-                    f"[{name}] Failed to set clock after login: {result.payload}"
-                )
-                return {
-                    "ok": False,
-                    "error": f"Failed to set clock after login",
-                }
-            logger.info(f"[{name}] Clock time set")
-            self._log_event("clock_set", name=name, pubkey=pubkey)
-            return {"ok": True}
+            if result is None:
+                return {"ok": False, "error": f"Clock set timed out)"}
+            return {"ok": True, "text": result.payload["text"]}
         except Exception as e:
-            logger.error(f"[{name}] Failed to set clock: {e}")
-            return {"ok": False, "error": str(e)}
+            logger.error(f"[{name}] Error setting clock: {e}")
+            return {"ok": False, "error": f"Error setting clock: {e}"}
 
     async def cli_login(self, pubkey: str) -> dict:
         """Login to a repeater for manual commands."""
