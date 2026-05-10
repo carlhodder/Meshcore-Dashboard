@@ -677,11 +677,16 @@ class MeshcorePoller:
     _PAYLOAD_TYPE_NAMES = {
         0: "Request",
         1: "Response",
+        2: "Text Message",
+        3: "ACK",
         4: "Advert",
         5: "Group Text",
+        6: "Group Data",
         7: "Anon Request",
         8: "Path Update",
-        9: "Text Msg",
+        9: "Trace",
+        10: "Multipart",
+        11: "Control",
     }
 
     async def _on_rx_log(self, event):
