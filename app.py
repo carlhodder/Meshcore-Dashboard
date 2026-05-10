@@ -90,10 +90,8 @@ async def get_repeaters():
     return store.get_all()
 
 
-@app.post("/api/repeater/pause")
-async def toggle_pause_repeater(request: Request):
-    body = await request.json()
-    pubkey = body.get("pubkey", None)
+@app.post("/api/repeater/{pubkey}/pause")
+async def toggle_pause_repeater(pubkey: str):
     if pubkey is None:
         return {"ok": False, "error": "pubkey key missing"}
     try:
@@ -104,7 +102,7 @@ async def toggle_pause_repeater(request: Request):
     return {"ok": True}
 
 
-@app.get("/api/repeater/command_history/{pubkey}")
+@app.get("/api/repeater/{pubkey}/command_history")
 async def get_repeater_command_history(pubkey: str):
     if pubkey is None:
         return {"ok": False, "error": "pubkey key missing"}
@@ -549,11 +547,19 @@ async def apply_update(file: UploadFile = File(...)):
 
 @app.post("/api/cli_login/{pubkey}")
 async def cli_login(pubkey: str):
+    if pubkey is None:
+        return {"ok": False, "error": "pubkey key missing"}
+    
     return await poller.cli_login(pubkey)
 
 
-@app.post("/api/cli_cmd/{pubkey}/{cmd}")
-async def cli_cmd(pubkey: str, cmd: str):
+@app.post("/api/cli_cmd/{pubkey}")
+async def cli_cmd(pubkey: str, request: Request):
+    body = await request.json()
+    cmd  = body.get("cmd", None)
+    if pubkey is None or cmd is None:
+        return {"ok": False, "error": "pubkey or cmd keys missing"}
+    
     return await poller.cli_cmd(pubkey, cmd)
 
 

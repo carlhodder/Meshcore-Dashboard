@@ -244,11 +244,7 @@ export default function Dashboard() {
   const togglePauseRepeater = async (pubkey, e) => {
     e.stopPropagation();
     try {
-      await fetch("/api/repeater/pause", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pubkey: pubkey }),
-      });
+      await fetch(`/api/repeater/${pubkey}/pause`, {method: "POST"});
       await updateRepeaterData();
     } catch (err) {
       console.log(err);

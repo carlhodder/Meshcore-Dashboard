@@ -20,7 +20,7 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
 
   // Load history
   useEffect(() => {
-    const data = fetch(`/api/repeater/command_history/${pubkey}`)
+    const data = fetch(`/api/repeater/${encodeURIComponent(pubkey)}/command_history`)
     .then((r) => r.json())
     .then(({history}) => {
       let historyLines = [];
@@ -72,9 +72,11 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
 
     try {
       const res = await fetch(
-        `/api/cli_cmd/${encodeURIComponent(pubkey)}/${encodeURIComponent(cmd)}`,
+        `/api/cli_cmd/${encodeURIComponent(pubkey)}`,
         {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({cmd: cmd}),
         },
       );
       const data = await res.json();
