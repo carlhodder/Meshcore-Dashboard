@@ -130,27 +130,49 @@ class AdvertNode(BaseDbModel):
     class Meta:
         table_name = "advert_nodes"
 
-# Wrapper just to keep metric field name, label, and default status all in one location. 
+
+# Wrapper just to keep metric field name, label, and default status all in one location.
 # Having a metric_label enables logging of the value. Assumes everything isa float atm.
 def metric(field, metric_label=None, metric_default=None):
     field.metric_label = metric_label
     field.metric_default = metric_default
     return field
 
+
 class RepeaterState(BaseDbModel):
     # Fields / db backed current state.
     pubkey = TextField(primary_key=True)
     name = TextField(default="")
     time = FloatField(null=True, default=None)
-    time_offset_seconds = metric(IntegerField(null=True, default=None), metric_label="Clock offset (s)")
+    time_offset_seconds = metric(
+        IntegerField(null=True, default=None), metric_label="Clock offset (s)"
+    )
     battery_mv = IntegerField(null=True, default=None)
-    battery_voltage = metric(FloatField(null=True, default=None), metric_label= "Battery voltage", metric_default=True)
-    rssi = metric(IntegerField(null=True, default=None), metric_label="RSSI (dBm)", metric_default=True)
-    snr = metric(FloatField(null=True, default=None), metric_label="SNR (dB)", metric_default=True)
-    noise_floor = metric(IntegerField(null=True, default=None), metric_label="Noise floor (dBm)")
+    battery_voltage = metric(
+        FloatField(null=True, default=None),
+        metric_label="Battery voltage",
+        metric_default=True,
+    )
+    rssi = metric(
+        IntegerField(null=True, default=None),
+        metric_label="RSSI (dBm)",
+        metric_default=True,
+    )
+    snr = metric(
+        FloatField(null=True, default=None),
+        metric_label="SNR (dB)",
+        metric_default=True,
+    )
+    noise_floor = metric(
+        IntegerField(null=True, default=None), metric_label="Noise floor (dBm)"
+    )
     uptime_seconds = IntegerField(null=True, default=None)
-    packets_recv = metric(IntegerField(null=True, default=None), metric_label="Packets Rx")
-    packets_sent = metric(IntegerField(null=True, default=None), metric_label="Packets Tx")
+    packets_recv = metric(
+        IntegerField(null=True, default=None), metric_label="Packets Rx"
+    )
+    packets_sent = metric(
+        IntegerField(null=True, default=None), metric_label="Packets Tx"
+    )
     hops = IntegerField(null=False, default=0)
     route_path = TextField(default="")
     lat = FloatField(null=True, default=None)
@@ -160,19 +182,29 @@ class RepeaterState(BaseDbModel):
     last_poll_ok = BooleanField(null=True, default=None)
     last_poll_timestamp = FloatField(null=False, default=0)
     last_neighbour_poll = FloatField(null=False, default=0)
-    last_clock_poll = FloatField(null=False, default=0)
     last_fw_poll = FloatField(null=False, default=0)
-    temperature = metric(FloatField(null=True, default=None), metric_label="Temperature")
+    temperature = metric(
+        FloatField(null=True, default=None), metric_label="Temperature"
+    )
     humidity = metric(FloatField(null=True, default=None), metric_label="Humidity")
-    
+
     @classmethod
     def get_metric_labels_dict(cls) -> dict:
-        return {k: getattr(f, "metric_label") for k,f in cls._meta.fields.items() if hasattr(f, "metric_label")}
+        return {
+            k: getattr(f, "metric_label")
+            for k, f in cls._meta.fields.items()
+            if hasattr(f, "metric_label")
+        }
 
     # Default metrics to show initially
     @classmethod
     def get_default_metric_fields(cls) -> list:
-        return [name for name, field in cls._meta.fields.items() if getattr(field, "metric_default", False) and getattr(field, "metric_label" , None) is not None] 
+        return [
+            name
+            for name, field in cls._meta.fields.items()
+            if getattr(field, "metric_default", False)
+            and getattr(field, "metric_label", None) is not None
+        ]
 
     def to_dict(self) -> dict:
         d = model_to_dict(self)
@@ -221,13 +253,13 @@ class DataStore:
         if self._db_path and not db.is_closed():
             db.stop()
             db.close()
-    
+
     def open_db(self):
         if db.obj is None:
             db.initialize(SqliteQueueDatabase(self._db_path, autoconnect=True))
         if db.is_closed():
             db.connect()
-    
+
     def _init_db(self):
         self.open_db()
         with db.connection_context():
@@ -433,7 +465,7 @@ class DataStore:
             metrics_to_store = RepeaterState.get_metric_labels_dict().keys()
             try:
                 with db.connection_context():
-                    
+
                     if pubkey not in self._repeaters:
                         self._repeaters[pubkey] = RepeaterState(pubkey=pubkey)
                     r = self._repeaters[pubkey]
@@ -451,7 +483,7 @@ class DataStore:
                                     measurement_code=k,
                                     measurement_value=float(v),
                                 )
-                        
+
                     r.last_seen_epoch = ts
                     r.last_poll_ok = True
                     r.last_poll_timestamp = ts
@@ -471,10 +503,11 @@ class DataStore:
                 data = r.to_dict()
                 repeater_cfg = self.cfg.get_repeater(pubkey)
                 if repeater_cfg:
-                    if not data["lat"] or not data["lon"]:  
+                    if not data["lat"] or not data["lon"]:
                         data["lat"] = data["lat"] or repeater_cfg.lat
                         data["lon"] = data["lon"] or repeater_cfg.lon
                     data["paused"] = repeater_cfg.paused
+                    data["clock_offset_limit"] = self.cfg.clock_offset_limit
                 result.append(data)
             return result
 
@@ -515,7 +548,10 @@ class DataStore:
                 output_format = {}
                 data_keys = set()
                 for meas in query:
-                    if meas.measurement_code in RepeaterState.get_metric_labels_dict().keys():
+                    if (
+                        meas.measurement_code
+                        in RepeaterState.get_metric_labels_dict().keys()
+                    ):
                         data_keys.add(meas.measurement_code)
                         output_format.setdefault(
                             round(meas.timestamp / (60 * 5)) * 60 * 5, {}
@@ -742,7 +778,6 @@ class DataStore:
                 if pubkey in self._repeaters:
                     self._repeaters[pubkey].time = timestamp
                     self._repeaters[pubkey].time_offset_seconds = time_offset_seconds
-                    self._repeaters[pubkey].last_clock_poll = time.time()
                     if self._db_path:
                         with db.connection_context():
                             self._repeaters[pubkey].save()
@@ -823,17 +858,24 @@ class DataStore:
         # Save a repeater command message or reply to cli command
         ts = time.time()
         with self._lock:
-            try:   
+            try:
                 with db.connection_context():
-                    RepeaterCommandMessage.create(timestamp=ts, pubkey=pubkey, is_command=is_command, text=text)
+                    RepeaterCommandMessage.create(
+                        timestamp=ts, pubkey=pubkey, is_command=is_command, text=text
+                    )
             except Exception as e:
                 print(f"[DataStore] Error saving repeater cli cmd: {e}")
 
     def get_command_history(self, pubkey, limit=200):
         with self._lock:
-            try:   
+            try:
                 with db.connection_context():
-                    query = RepeaterCommandMessage.select().order_by(RepeaterCommandMessage.id.desc()).where(RepeaterCommandMessage.pubkey == pubkey).limit(limit)
+                    query = (
+                        RepeaterCommandMessage.select()
+                        .order_by(RepeaterCommandMessage.id.desc())
+                        .where(RepeaterCommandMessage.pubkey == pubkey)
+                        .limit(limit)
+                    )
                     result = list(query.dicts())
                     result.reverse()
                     return result

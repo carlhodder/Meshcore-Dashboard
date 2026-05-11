@@ -17,6 +17,7 @@ _SETTINGS_FILE = Path(__file__).parent / "data/settings.json"
 
 from typing import List, Dict, Any
 
+
 class RepeaterConfig(BaseModel):
     name: str
     pubkey: str
@@ -54,10 +55,9 @@ class UserConfigurables(BaseModel):
     home_lon: float = 0.0
     neighbours_enabled: bool = True
     neighbours_check_hours: int = 12
-    clock_check_enabled: bool = True
-    clock_check_days: int = 7
     firmware_get_enabled: bool = False
     firmware_get_days: int = 7
+    clock_offset_limit: int = 30
 
     @field_validator("companion_type", mode="after")
     @classmethod
@@ -108,11 +108,11 @@ class UserConfigurables(BaseModel):
             raise ValueError("neighbours_check_hours must be >= 1 (1 hr)")
         return value
 
-    @field_validator("clock_check_days", mode="after")
+    @field_validator("clock_offset_limit", mode="after")
     @classmethod
-    def clock_check_days_is_valid(cls, value) -> int:
-        if value < 1:
-            raise ValueError("clock_check_days must be >= 1 (1 day)")
+    def clock_offset_limit_is_valid(cls, value) -> int:
+        if value < 0:
+            raise ValueError("clock_offset_limit must be >= 0 (0 sec)")
         return value
 
     @field_validator("firmware_get_days", mode="after")
@@ -175,12 +175,10 @@ class Config(UserConfigurables):
             if r.pubkey == pubkey or r.pubkey.startswith(pubkey):
                 return r
         return None
-    
+
     def toggle_pause_repeater(self, pubkey):
         repeater = self.get_repeater(pubkey)
         if repeater is not None:
             repeater.paused = not repeater.paused
             self.save()
         return repeater.paused
-
-

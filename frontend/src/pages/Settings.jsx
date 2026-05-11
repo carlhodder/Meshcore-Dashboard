@@ -338,45 +338,15 @@ export default function Settings() {
         </div>
 
         <div className={styles.settingsSection}>
-          <h3>Device Clock/time</h3>
-          <p className={styles.settingsHelp}>
-            Only controls repeat poll, manual poll will always update repeater
-            clock time.
-          </p>
-          <div className={styles.settingsRow}>
-            <div
-              className={styles.settingsField}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: "0.5rem",
-              }}
-            >
-              <input
-                type="checkbox"
-                id="clock_check_enabled"
-                checked={settings.clock_check_enabled}
-                onChange={handleChange}
-              />
-              <label style={{ margin: 0, padding: 0 }}>Enable</label>
-            </div>
-            <div className={styles.settingsField}>
-              <label>Interval (days)</label>
-              <input
-                type="number"
-                id="clock_check_days"
-                value={settings.clock_check_days}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.settingsSection}>
-          <h3>Device Firmware Version</h3>
+          <h3>Device Firmware Version + Device Clock</h3>
           <p className={styles.settingsHelp}>
             Only controls repeat poll, manual poll will always update FW
-            version.
+            version. Timestamp in response packet is also used to check the
+            clock
+          </p>
+          <p className={styles.settingsHelp}>
+            A metric tile will show if the clock is out by more than that set
+            here (0 = always show).
           </p>
           <div className={styles.settingsRow}>
             <div
@@ -401,6 +371,15 @@ export default function Settings() {
                 type="number"
                 id="firmware_get_days"
                 value={settings.firmware_get_days}
+                onChange={handleChange}
+              />
+            </div>
+            <div className={styles.settingsField}>
+              <label>Clock Warning (seconds)</label>
+              <input
+                type="number"
+                id="clock_offset_limit"
+                value={settings.clock_offset_limit}
                 onChange={handleChange}
               />
             </div>

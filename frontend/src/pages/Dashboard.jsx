@@ -24,6 +24,13 @@ function timeAgo(epoch) {
   return Math.floor(diff / 86400) + "d ago";
 }
 
+function clockOffsetClass(secs, limit) {
+  if (secs === undefined || secs == null) return "";
+  if (Math.abs(secs) >= 10) return styles["metric-mid"];
+  if (Math.abs(secs) >= 30) return styles["metric-bad"];
+  return styles["metric-good-white"];
+}
+
 function batteryPercent(mv) {
   if (mv <= 0) return 0;
   const pct = Math.round(((mv - 3000) / (4200 - 3000)) * 100);
@@ -90,9 +97,9 @@ function buildRouteChain(r, prefixToName) {
 
 function timeout_date_string(timestamp) {
   if (timestamp == 0) {
-    return ""
+    return "";
   } else {
-    return format(new Date(timestamp * 1000), 'yyyy-MM-dd h:mm aa');
+    return format(new Date(timestamp * 1000), "yyyy-MM-dd h:mm aa");
   }
 }
 
@@ -244,7 +251,7 @@ export default function Dashboard() {
   const togglePauseRepeater = async (pubkey, e) => {
     e.stopPropagation();
     try {
-      await fetch(`/api/repeater/${pubkey}/pause`, {method: "POST"});
+      await fetch(`/api/repeater/${pubkey}/pause`, { method: "POST" });
       await updateRepeaterData();
     } catch (err) {
       console.log(err);
@@ -328,7 +335,8 @@ export default function Dashboard() {
                   <span className={`status-dot ${statusClass}`}></span>
                 </div>
               </div>
-              <div className={`${styles["card-history-block"]}`}
+              <div
+                className={`${styles["card-history-block"]}`}
                 onClick={(e) => {
                   if (
                     e.target.tagName === "BUTTON" ||
@@ -381,7 +389,9 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className={`${styles["metric"]}`}>
-                    <div className={`${styles["metric-label"]}`}>Noise Floor</div>
+                    <div className={`${styles["metric-label"]}`}>
+                      Noise Floor
+                    </div>
                     <div
                       className={`${styles["metric-value"]} val-noise ${noiseClass(r.noise_floor)}`}
                     >
@@ -414,7 +424,9 @@ export default function Dashboard() {
                   )}
                   {r.humidity != null && (
                     <div className={`${styles["metric"]}`}>
-                      <div className={`${styles["metric-label"]}`}>Humidity</div>
+                      <div className={`${styles["metric-label"]}`}>
+                        Humidity
+                      </div>
                       <div className={`${styles["metric-value"]} val-humidity`}>
                         {r.humidity.toFixed(1)}
                         <span className={`${styles["metric-unit"]}`}> %</span>
@@ -422,14 +434,13 @@ export default function Dashboard() {
                     </div>
                   )}
                   {r.time_offset_seconds != null &&
-                    Math.abs(r.time_offset_seconds) >= 30 && (
+                    Math.abs(r.time_offset_seconds) >= r.clock_offset_limit && (
                       <div className={`${styles["metric"]}`}>
                         <div className={`${styles["metric-label"]}`}>
                           Time Error
                         </div>
                         <div
-                          className={`${styles["metric-value"]} val-time-error`}
-                          style={{ color: "#ef4444" }}
+                          className={`${styles["metric-value"]} val-time-error ${clockOffsetClass(r.time_offset_seconds, r.clock_offset_limit)}`}
                         >
                           {r.time_offset_seconds > 0 ? "+" : ""}
                           {Math.max(Math.min(r.time_offset_seconds, 999), -999)}
@@ -442,37 +453,44 @@ export default function Dashboard() {
               <div className={`${styles["card-footer"]}`}>
                 <div className={`${styles["card-footer-left"]}`}>
                   <div>
-                    <span 
+                    <span
                       className={`${styles["card-footer-seen"]}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setLastPolledMenuOpen(lastPolledMenuOpen == r.pubkey ? null : r.pubkey);
+                        setLastPolledMenuOpen(
+                          lastPolledMenuOpen == r.pubkey ? null : r.pubkey,
+                        );
                         setMenuOpen(null);
-                      }}>Last seen: {timeAgo(r.last_seen_epoch)}</span>
+                      }}
+                    >
+                      Last seen: {timeAgo(r.last_seen_epoch)}
+                    </span>
                   </div>
                   {lastPolledMenuOpen === r.pubkey && (
-                      <div className={`${styles["popup-menu"]} ${styles["popup-menu-poll-intervals"]}`}>
-                        <table>
-                          <tbody>
-                            <tr>
-                              <td>Last poll:</td>
-                              <td>{timeout_date_string(r.last_poll_timestamp)}</td>
-                            </tr>
-                            <tr>
-                              <td>Last neighbours poll:</td>
-                              <td>{timeout_date_string(r.last_neighbour_poll)}</td>
-                            </tr>
-                            <tr>
-                              <td>Last clock poll:</td>
-                              <td>{timeout_date_string(r.last_clock_poll)}</td>
-                            </tr>
-                            <tr>
-                              <td>Last FW poll:</td>
-                              <td>{timeout_date_string(r.last_fw_poll)}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
+                    <div
+                      className={`${styles["popup-menu"]} ${styles["popup-menu-poll-intervals"]}`}
+                    >
+                      <table>
+                        <tbody>
+                          <tr>
+                            <td>Last poll:</td>
+                            <td>
+                              {timeout_date_string(r.last_poll_timestamp)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Last neighbours poll:</td>
+                            <td>
+                              {timeout_date_string(r.last_neighbour_poll)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Last FW poll:</td>
+                            <td>{timeout_date_string(r.last_fw_poll)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                   <div className={`${styles["card-footer-route-container"]}`}>
                     {routeChain && (
@@ -565,7 +583,7 @@ export default function Dashboard() {
                         >
                           Remote Admin
                         </button>
-                        <button 
+                        <button
                           onClick={(e) => {
                             setMenuOpen(null);
                             togglePauseRepeater(r.pubkey, e);
