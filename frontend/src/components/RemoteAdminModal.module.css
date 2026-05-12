@@ -142,3 +142,9 @@
 .btn-primary:hover:not(:disabled) {
   background: #1d4ed8;
 }
+
+.login-text {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 0.6rem;
+}

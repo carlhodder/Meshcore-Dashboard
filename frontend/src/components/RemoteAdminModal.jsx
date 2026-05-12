@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "preact/hooks";
+import { formatDistanceToNow } from "date-fns";
 import styles from "./RemoteAdminModal.module.css";
 
-export default function RemoteAdminModal({ pubkey, name, onClose }) {
+export default function RemoteAdminModal({ pubkey, name, lastLogin, onClose }) {
   const [lines, setLines] = useState([]);
   const [cmd, setCmd] = useState("");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(lastLogin > 0);
   const [isLoading, setIsLoading] = useState(false);
   const outputRef = useRef(null);
 
@@ -20,15 +21,21 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
 
   // Load history
   useEffect(() => {
-    const data = fetch(`/api/repeater/${encodeURIComponent(pubkey)}/command_history`)
-    .then((r) => r.json())
-    .then(({history}) => {
-      let historyLines = [];
-      for (const line of history) {
-        historyLines.push({text: `${line.is_command ? "> " : ""}${line.text}`, isError: false});
-      }
-      setLines([...historyLines, ...lines]);
-    }).catch(() => {});
+    const data = fetch(
+      `/api/repeater/${encodeURIComponent(pubkey)}/command_history`,
+    )
+      .then((r) => r.json())
+      .then(({ history }) => {
+        let historyLines = [];
+        for (const line of history) {
+          historyLines.push({
+            text: `${line.is_command ? "> " : ""}${line.text}`,
+            isError: false,
+          });
+        }
+        setLines([...historyLines, ...lines]);
+      })
+      .catch(() => {});
   }, []);
 
   const handleLogin = async () => {
@@ -53,16 +60,24 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
   };
 
   const handleSend = async () => {
-    if (!cmd ||!cmd.trim() || !isLoggedIn) return;
+    if (!cmd || !cmd.trim() || !isLoggedIn) return;
 
     // Add warnings for a couple of commands that could leave you stranded
-    if (cmd.toLowerCase() == 'set repeat off') {
-      if (!confirm("WARNING: This will also stop responding to login/commands if they hop, only direct connections will work after this. Are you sure?")){
+    if (cmd.toLowerCase() == "set repeat off") {
+      if (
+        !confirm(
+          "WARNING: This will also stop responding to login/commands if they hop, only direct connections will work after this. Are you sure?",
+        )
+      ) {
         return;
       }
     }
-    if (cmd.toLowerCase() == 'start ota') {
-      if (!confirm("WARNING: This can leave the repeater in a broken state, are you sure? (and if nrf52 did you flash the bootloader first?)")){
+    if (cmd.toLowerCase() == "start ota") {
+      if (
+        !confirm(
+          "WARNING: This can leave the repeater in a broken state, are you sure? (and if nrf52 did you flash the bootloader first?)",
+        )
+      ) {
         return;
       }
     }
@@ -71,14 +86,11 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
     addLine(`> ${cmd}`);
 
     try {
-      const res = await fetch(
-        `/api/cli_cmd/${encodeURIComponent(pubkey)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({cmd: cmd}),
-        },
-      );
+      const res = await fetch(`/api/cli_cmd/${encodeURIComponent(pubkey)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cmd: cmd }),
+      });
       const data = await res.json();
       if (data.ok) {
         if (data.text) {
@@ -126,33 +138,41 @@ export default function RemoteAdminModal({ pubkey, name, onClose }) {
           </div>
         </div>
         <div className={styles["input-area"]}>
-            <span className={styles.prompt}>{">"}</span>
-            <input
-              type="text"
-              className={styles.input}
-              value={cmd}
-              onInput={(e) => setCmd((e.target.value || "").trim())}
-              onKeyDown={handleKeyDown}
-              disabled={!isLoggedIn || isLoading}
-              autoFocus
-            />
-            <div className={styles.actions}>
-              <button
-                className={`${styles.btn} ${styles["btn-primary"]}`}
-                onClick={handleSend}
-                disabled={!isLoggedIn || isLoading || !cmd.trim()}
-              >
-                Send
-              </button>
-              <button
-                className={styles.btn}
-                onClick={handleLogin}
-                disabled={isLoggedIn || isLoading}
-              >
-                {isLoggedIn ? "logged in" : "Login"}
-              </button>
-            </div>
+          <span className={styles.prompt}>{">"}</span>
+          <input
+            type="text"
+            className={styles.input}
+            value={cmd}
+            onInput={(e) => setCmd((e.target.value || "").trim())}
+            onKeyDown={handleKeyDown}
+            disabled={!isLoggedIn || isLoading}
+            autoFocus
+          />
+          <div className={styles.actions}>
+            <button
+              className={`${styles.btn} ${styles["btn-primary"]}`}
+              onClick={handleSend}
+              disabled={!isLoggedIn || isLoading || !cmd.trim()}
+            >
+              Send
+            </button>
+            <button
+              className={styles.btn}
+              onClick={handleLogin}
+              disabled={isLoading}
+            >
+              {isLoggedIn ? "Re-login" : "Login"}
+            </button>
           </div>
+        </div>
+        <span className={styles["login-text"]}>
+          Last login time:{" "}
+          {lastLogin
+            ? formatDistanceToNow(new Date(lastLogin * 1000), {
+                addSuffix: true,
+              })
+            : "unknown"}
+        </span>
       </div>
     </div>
   );

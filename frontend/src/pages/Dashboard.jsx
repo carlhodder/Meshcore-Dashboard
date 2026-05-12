@@ -578,6 +578,7 @@ export default function Dashboard() {
                             setRemoteAdminNode({
                               pubkey: r.pubkey,
                               name: r.name,
+                              lastLogin: r.lastLogin,
                             });
                           }}
                         >
@@ -612,6 +613,7 @@ export default function Dashboard() {
         <RemoteAdminModal
           pubkey={remoteAdminNode.pubkey}
           name={remoteAdminNode.name}
+          lastLogin={remoteAdminNode.last_login_timestamp}
           onClose={() => setRemoteAdminNode(null)}
         />
       )}

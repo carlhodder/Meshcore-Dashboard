@@ -1271,7 +1271,7 @@ class MeshcorePoller:
         # Login to repeater before requesting data
         success = await self.__repeat_on_failure(
             self._login_to_repeater,
-            [contact, name, repeater_cfg.admin_pass],
+            [repeater_cfg.pubkey, contact, name, repeater_cfg.admin_pass],
             reattempts=1,
         )
         if success:
@@ -1384,7 +1384,7 @@ class MeshcorePoller:
         except Exception as e:
             logger.error(f"[{name}] Path update error: {e}")
 
-    async def _login_to_repeater(self, contact, name: str, password: str):
+    async def _login_to_repeater(self, pubkey, contact, name: str, password: str):
         """Login to a repeater so it responds to status/telemetry requests."""
         try:
             result = await self.mc.commands.send_login_sync(contact, password)
@@ -1392,6 +1392,7 @@ class MeshcorePoller:
                 logger.warning(f"[{name}] Login failed")
                 return False
             else:
+                self.store.update_last_logged_in(pubkey)
                 logger.info(
                     f"[{name}] Login sent (pwd={'default' if password == 'password' else 'custom'})"
                 )
@@ -1617,7 +1618,7 @@ class MeshcorePoller:
         name = repeater_cfg.name or pubkey[:8]
         try:
             success = await self._login_to_repeater(
-                contact, name, repeater_cfg.admin_pass
+                repeater_cfg.pubkey, contact, name, repeater_cfg.admin_pass
             )
             if not success:
                 return {"ok": False, "error": f"Failed to log in to {name}"}
@@ -1646,7 +1647,7 @@ class MeshcorePoller:
         name = repeater_cfg.name or pubkey[:8]
         try:
             success = await self._login_to_repeater(
-                contact, name, repeater_cfg.admin_pass
+                repeater_cfg.pubkey, contact, name, repeater_cfg.admin_pass
             )
             if not success:
                 return {"ok": False, "error": f"Failed to log in to {name}"}
@@ -1679,7 +1680,7 @@ class MeshcorePoller:
         name = repeater_cfg.name or pubkey[:8]
         try:
             success = await self._login_to_repeater(
-                contact, name, repeater_cfg.admin_pass
+                repeater_cfg.pubkey, contact, name, repeater_cfg.admin_pass
             )
             if not success:
                 return {"ok": False, "error": f"Failed to log in to {name}"}
@@ -1712,6 +1713,16 @@ class MeshcorePoller:
             result = await self._sync_request_remote_cmd(
                 pubkey, cmd, validator, contact, timeout=10
             )
+            if cmd.lower().trim() in [
+                "reboot",
+                "clkreboot",
+                "poweroff",
+                "shutdown",
+            ]:
+                # Clear last login time
+                self.store.update_last_logged_in(repeater_cfg.pubkey, 0)
+                return {"ok": True, "text": f"({cmd} does not return anything)"}
+
             if result is None:
                 return {"ok": False, "error": f"({cmd} timed out)"}
 

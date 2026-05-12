@@ -183,6 +183,7 @@ class RepeaterState(BaseDbModel):
     last_poll_timestamp = FloatField(null=False, default=0)
     last_neighbour_poll = FloatField(null=False, default=0)
     last_fw_poll = FloatField(null=False, default=0)
+    last_login_timestamp = FloatField(null=False, default=0)
     temperature = metric(
         FloatField(null=True, default=None), metric_label="Temperature"
     )
@@ -850,6 +851,17 @@ class DataStore:
             if pubkey in self._repeaters:
                 self._repeaters[pubkey].fw_version = version_info
                 self._repeaters[pubkey].last_fw_poll = time.time()
+                if self._db_path:
+                    with db.connection_context():
+                        self._repeaters[pubkey].save()
+
+    def update_last_logged_in(self, pubkey, login_ts=None):
+        if login_ts is None:
+            login_ts = time.time()
+
+        with self._lock:
+            if pubkey in self._repeaters:
+                self._repeaters[pubkey].last_login_timestamp = login_ts
                 if self._db_path:
                     with db.connection_context():
                         self._repeaters[pubkey].save()
