@@ -128,7 +128,7 @@ async def get_contact_routes():
     """Return cached contact routes (pubkey_prefix → {hops, path}) for all contacts."""
     if not poller:
         return {}
-    return {k: {"hops": v[0], "path": v[1]} for k, v in poller._contact_routes.items()}
+    return poller.get_all_cached_contact_routes_dict()
 
 
 @app.get("/api/message-paths")

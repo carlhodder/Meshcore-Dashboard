@@ -691,6 +691,14 @@ class MeshcorePoller:
             return None, None
         
         return next(iter(self._contact_routes[node_key].keys()))
+    
+    def get_all_cached_contact_routes_dict(self):
+        all_routes = {}
+        for pubkey, routes_dict in self._contact_routes.items():
+            hops, route = next(iter(routes_dict.keys()))
+            all_routes[pubkey] = {"hops": hops, "route": route}
+        return all_routes
+        
 
     # Payload type codes extracted from header byte bits 2-5: (header >> 2) & 0x0F
     _PAYLOAD_TYPE_NAMES = {
