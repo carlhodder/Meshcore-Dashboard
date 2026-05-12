@@ -126,8 +126,6 @@ export default function MapPage() {
   const nodeColorsRef = useRef({});
   const mapNodeNamesRef = useRef({});
 
-  const adjacencyRef = useRef({});
-  const nodeNameMapRef = useRef({});
   const contactMapRef = useRef({});
   const allContactsDataRef = useRef([]);
   const allNodeLatLngRef = useRef({});
@@ -150,61 +148,6 @@ export default function MapPage() {
         mapNodeNamesRef.current = d || {};
       })
       .catch(() => {});
-  }, []);
-
-  const buildAdjacency = useCallback((repeaters, home) => {
-    const adjacency = {};
-    const nodeNameMap = {};
-    const homePk = "__home__";
-    if (home && home.name) nodeNameMap[homePk] = home.name;
-    repeaters.forEach((r) => {
-      if (r.pubkey) nodeNameMap[r.pubkey] = r.name;
-    });
-    Object.keys(contactMapRef.current).forEach((prefix) => {
-      const c = contactMapRef.current[prefix];
-      if (c.pubkey) nodeNameMap[c.pubkey] = c.name;
-    });
-
-    function addEdge(a, b) {
-      if (!adjacency[a]) adjacency[a] = [];
-      if (!adjacency[a].includes(b)) adjacency[a].push(b);
-      if (!adjacency[b]) adjacency[b] = [];
-      if (!adjacency[b].includes(a)) adjacency[b].push(a);
-    }
-
-    function buildChain(pubkey, route_path) {
-      const chain = [homePk];
-      if (route_path) {
-        route_path
-          .replace(/\s/g, "")
-          .split(">")
-          .forEach((seg) => {
-            const segLower = seg.toLowerCase();
-            const intermediate = pubkeyMapRef.current[segLower];
-            if (intermediate && intermediate.pubkey !== pubkey) {
-              chain.push(intermediate.pubkey);
-            } else if (!intermediate) {
-              const unk = contactMapRef.current[segLower];
-              if (unk && unk.pubkey && unk.pubkey !== pubkey)
-                chain.push(unk.pubkey);
-            }
-          });
-      }
-      chain.push(pubkey);
-      for (let i = 0; i < chain.length - 1; i++)
-        addEdge(chain[i], chain[i + 1]);
-    }
-
-    repeaters.forEach((r) => {
-      if (r.pubkey) buildChain(r.pubkey, r.route_path);
-    });
-    Object.keys(contactMapRef.current).forEach((prefix) => {
-      const c = contactMapRef.current[prefix];
-      if (c.pubkey) buildChain(c.pubkey, c.route_path);
-    });
-
-    adjacencyRef.current = adjacency;
-    nodeNameMapRef.current = nodeNameMap;
   }, []);
 
   const renderPathsLayer = useCallback(() => {
@@ -407,14 +350,6 @@ export default function MapPage() {
       .catch(() => {});
   }, []);
 
-  const isLinkedToMyRepeaters = useCallback((pubkey) => {
-    var neighbours = adjacencyRef.current[pubkey] || [];
-    for (var i = 0; i < neighbours.length; i++) {
-      if (markersRef.current[neighbours[i]]) return true;
-    }
-    return false;
-  }, []);
-
   const clearPathHighlight = useCallback(() => {
     highlightedRepeaterRef.current = null;
     setShowingPaths(pathsStateBeforeHighlightRef.current);
@@ -517,7 +452,7 @@ export default function MapPage() {
         offset: [0, -10],
       });
     });
-  }, [isLinkedToMyRepeaters, clearPathHighlight, renderPathsLayer]);
+  }, [clearPathHighlight, renderPathsLayer]);
 
   const renderNeighbourLinksLayer = useCallback(() => {
     if (!neighbourLinksLayerRef.current) return;
@@ -755,8 +690,6 @@ export default function MapPage() {
           contactMapRef.current[c.pubkey.substring(0, 4).toLowerCase()] = c;
       });
 
-      buildAdjacency(repeaters, home);
-
       if (home.lat && home.lon) {
         const homeLatLng = [home.lat, home.lon];
         bounds.push(homeLatLng);
@@ -937,7 +870,6 @@ export default function MapPage() {
       }
     },
     [
-      buildAdjacency,
       rebuildAllNodeLatLng,
       clearPathHighlight,
       renderPathsLayer,
