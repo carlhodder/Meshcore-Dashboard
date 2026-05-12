@@ -114,6 +114,7 @@ export default function MapPage() {
   const [showingPaths, setShowingPaths] = useState(false);
   const [showingMsgPaths, setShowingMsgPaths] = useState(false);
   const [showingNeighbourLinks, setShowingNeighbourLinks] = useState(false);
+  const [neighbourRenderTrigger, setNeighbourRenderTrigger] = useState(0);
   const [legendOpen, setLegendOpen] = useState(true);
 
   const markersRef = useRef({});
@@ -422,6 +423,7 @@ export default function MapPage() {
     } else {
       if (pathsLayerRef.current) pathsLayerRef.current.clearLayers();
     }
+    setNeighbourRenderTrigger((prev) => prev + 1);
   }, [renderPathsLayer]);
 
   const renderContactsLayer = useCallback(() => {
@@ -502,6 +504,7 @@ export default function MapPage() {
                 });
                 highlightedRepeaterRef.current = pk;
                 renderPathsLayer();
+                setNeighbourRenderTrigger((prev) => prev + 1);
               }
             };
           })(c.pubkey),
@@ -576,7 +579,23 @@ export default function MapPage() {
 
         var pairs = {};
 
+        var filterPk = highlightedRepeaterRef.current;
+
         neighbours.forEach((nb) => {
+          if (filterPk) {
+            var fp = filterPk.toLowerCase();
+            var p1 = nb.pubkey.toLowerCase();
+            var p2 = nb.pubkey_remote.toLowerCase();
+            if (
+              !p1.startsWith(fp) &&
+              !fp.startsWith(p1) &&
+              !p2.startsWith(fp) &&
+              !fp.startsWith(p2)
+            ) {
+              return;
+            }
+          }
+
           var listenerNode = resolveNode(nb.pubkey);
           var transmitterNode = resolveNode(nb.pubkey_remote);
           if (!listenerNode || !transmitterNode) return;
@@ -648,14 +667,6 @@ export default function MapPage() {
                 " dB",
             );
           var labelHtml = lines.join("<br>");
-
-          var line = window.L.polyline([ptA, ptB], {
-            color: "#22d3ee",
-            weight: 12,
-            opacity: 0.0,
-          });
-          line.bindTooltip(labelHtml, { sticky: true, className: "map-label" });
-          neighbourLinksLayerRef.current.addLayer(line);
 
           window.L.polyline([ptA, ptB], {
             color: "#22d3ee",
@@ -812,6 +823,7 @@ export default function MapPage() {
                 });
                 highlightedRepeaterRef.current = r.pubkey;
                 renderPathsLayer();
+                setNeighbourRenderTrigger((prev) => prev + 1);
               }
             });
         }
@@ -1055,7 +1067,11 @@ export default function MapPage() {
     if (showingNeighbourLinks) renderNeighbourLinksLayer();
     else if (neighbourLinksLayerRef.current)
       neighbourLinksLayerRef.current.clearLayers();
-  }, [showingNeighbourLinks, renderNeighbourLinksLayer]);
+  }, [
+    showingNeighbourLinks,
+    neighbourRenderTrigger,
+    renderNeighbourLinksLayer,
+  ]);
 
   useEffect(() => {
     if (showingAllContacts) renderContactsLayer();
