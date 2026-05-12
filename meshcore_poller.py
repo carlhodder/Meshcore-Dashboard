@@ -765,7 +765,6 @@ class MeshcorePoller:
                         2, # Text message
                         5, # Group Text
                         7, # Anon Req
-                        9, # Trace
                     }  # Request, Group Text, Anon Req, Text Msg
                     if payload_type in _MSG_PAYLOAD_TYPES and decoded_path:
                         import time as _time
