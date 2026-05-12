@@ -59,23 +59,6 @@ class MeshcorePoller:
             False  # Don't save app command replies to private messages
         )
 
-    def _lookup_contact_route(self, pubkey_prefix: str) -> tuple:
-        """Fuzzy-match pubkey_prefix against _contact_routes. Returns (hops, path) or (-1, '')."""
-        if not pubkey_prefix:
-            return (-1, "")
-        pre = pubkey_prefix.upper()
-        # Exact match first
-        if pre in self._contact_routes:
-            return self._contact_routes[pre]
-        # Try 2-char prefix
-        if len(pre) >= 2 and pre[:2] in self._contact_routes:
-            return self._contact_routes[pre[:2]]
-        # Fuzzy: any stored key that starts with our prefix OR our prefix starts with stored key
-        for k, v in self._contact_routes.items():
-            if k.startswith(pre) or pre.startswith(k):
-                return v
-        return (-1, "")
-
     def _cache_node_name(self, node_id: str, name: str):
         """Store a node ID → name mapping and persist it to the database."""
         node_id = node_id.upper()
@@ -484,7 +467,7 @@ class MeshcorePoller:
                 if stored_path and stored_hops == hops:
                     path = stored_path
                 if not path:
-                    _, cached_path = self._lookup_contact_route(sender_pubkey)
+                    _, cached_path = self.get_cached_contact_route(sender_pubkey)
                     if cached_path:
                         path = cached_path
                 if not path:
@@ -651,7 +634,7 @@ class MeshcorePoller:
 
             if disc_route is not None:
                 # Cache for all contacts (used by non-configured contacts too)
-                self._contact_routes[pubkey_pre.upper()] = (new_hops, disc_route)
+                self.add_to_contact_routes(pubkey_pre, new_hops, disc_route)
 
                 # Update configured repeater store if this matches one
                 repeater_cfg = self._cfg.get_repeater(pubkey_pre)
@@ -674,6 +657,40 @@ class MeshcorePoller:
                 )
         except Exception as e:
             logger.debug(f"Error handling PATH_RESPONSE event: {e}")
+
+    def add_to_contact_routes(self, pubkey, hops, processed_route):
+        if hops < 0 or (hops > 1 and not processed_route):
+            # Bad data, don't store.
+            return
+        
+        node_key = pubkey[:self._cfg.node_id_chars]
+        # Create or increment hope, route counter 
+        self._contact_routes.setdefault(node_key, {}).setdefault((hops, processed_route), 0)
+        self._contact_routes[node_key][(hops, processed_route)] += 1
+
+        # Now only keep top 5 routes by frequency, and keep 
+        self._contact_routes[node_key] = dict(sorted(self._contact_routes[node_key].items(), key=lambda a: (a[1], a[0][0]), reverse=True)[:5])
+        n_routes = len(self._contact_routes[node_key].keys())
+        max_freq_count = max(self._contact_routes[node_key].values())
+        min_freq_count = min(self._contact_routes[node_key].values())
+
+        # Cap the largest value
+        if max_freq_count > 5:
+            for k in self._contact_routes[node_key].keys():
+                self._contact_routes[node_key][k] *= (5/max_freq_count)
+
+        # Finally scale so that the smallest count becomes < 1, this way an old entry is always evicted leaving room
+        # for another to get consecutive 
+        if min_freq_count > 1 and n_routes >= 5:
+            for k in self._contact_routes[node_key].keys():
+                self._contact_routes[node_key][k] *= (0.9/min_freq_count)
+
+    def get_cached_contact_route(self, pubkey):
+        node_key = pubkey[:self._cfg.node_id_chars]
+        if node_key not in self._contact_routes:
+            return None, None
+        
+        return next(iter(self._contact_routes[node_key].keys()))
 
     # Payload type codes extracted from header byte bits 2-5: (header >> 2) & 0x0F
     _PAYLOAD_TYPE_NAMES = {
@@ -736,10 +753,11 @@ class MeshcorePoller:
 
                     # Stash path for message-type packets so _on_contact/channel_msg can use it
                     _MSG_PAYLOAD_TYPES = {
-                        0,
-                        5,
-                        7,
-                        9,
+                        0, # Request
+                        2, # Text message
+                        5, # Group Text
+                        7, # Anon Req
+                        9, # Trace
                     }  # Request, Group Text, Anon Req, Text Msg
                     if payload_type in _MSG_PAYLOAD_TYPES and decoded_path:
                         import time as _time
@@ -826,7 +844,7 @@ class MeshcorePoller:
                                 else pubkey_hex[:2].upper()
                             )
                             hops = self._path_len_to_hops(path_len)
-                            self._contact_routes[cache_key] = (hops, route_str)
+                            self.add_to_contact_routes(pubkey_hex, hops, route_str)
                             logger.debug(
                                 f"[advert path] {name_str or pubkey_hex[:8]}: hops={hops}, path={'flood' if hops == -1 else route_str or 'direct'}"
                             )
@@ -1144,7 +1162,7 @@ class MeshcorePoller:
             )
             # Fall back to contact route cache from PATH_RESPONSE events
             if route_path is None:
-                cached = self._lookup_contact_route(pk)
+                cached = self.get_cached_contact_route(pk)
                 if cached:
                     hops = cached[0]
                     route_path = cached[1]
@@ -1246,11 +1264,11 @@ class MeshcorePoller:
 
             # If we know there are intermediate hops but the contact has no path data,
             # run a path discovery request to find the actual route.
-
             if hops > 0 and not route_path:
-                hops, route_path = await self._discover_path(contact, pubkey, name)
+                await self._discover_path(contact, pubkey, name)
+                hops, route_path = self.get_cached_contact_route(pubkey)
 
-            if hops >= 0:
+            if hops >= 0 and route_path is not None:
                 use_path = route_path
             else:
                 use_path = None
@@ -1269,11 +1287,7 @@ class MeshcorePoller:
         await self._apply_path(contact, pubkey, name, use_path)
 
         # Login to repeater before requesting data
-        success = await self.__repeat_on_failure(
-            self._login_to_repeater,
-            [repeater_cfg.pubkey, contact, name, repeater_cfg.admin_pass],
-            reattempts=1,
-        )
+        success = await self._login_to_repeater(repeater_cfg.pubkey, contact, name, repeater_cfg.admin_pass)
         if success:
             if not self._running or self._needs_reconnect or self._stay_disconnected:
                 return
@@ -1351,10 +1365,11 @@ class MeshcorePoller:
                 payload.get("out_path"), new_hops
             )
             if new_hops >= 0 and disc_route is not None:
+                # Add to route ranker list and get best result before saving
+                self.add_to_contact_routes(pubkey, new_hops, disc_route)
                 if configured_contact:
-                    self.store.update_route(pubkey, new_hops, disc_route)
-                else:
-                    self._contact_routes[pubkey.upper()[:4]] = (new_hops, disc_route)
+                    use_hops, use_route = self.get_cached_contact_route(pubkey)
+                    self.store.update_route(pubkey, use_hops, use_route)
 
                 logger.info(
                     f"[{name}] Path discovered: hops={new_hops}, path={disc_route or 'direct'}"
@@ -1374,7 +1389,7 @@ class MeshcorePoller:
             if custom_path is not None:
                 # Convert to bytes (fromhex ignores spaces) and back to string to clean.
                 # NOTE: As of 2.3.0 this method will throw if you send bytes
-                path_bytes = bytes.fromhex(custom_path.replace(",", ""))
+                path_bytes = bytes.fromhex(custom_path.replace(",", "").replace(">", ""))
                 await self.mc.commands.change_contact_path(contact, path_bytes.hex())
                 logger.info(f"[{name}] Set custom path: {custom_path}")
             else:
@@ -1387,7 +1402,7 @@ class MeshcorePoller:
     async def _login_to_repeater(self, pubkey, contact, name: str, password: str):
         """Login to a repeater so it responds to status/telemetry requests."""
         try:
-            result = await self.mc.commands.send_login_sync(contact, password)
+            result = await self.__repeat_on_failure(self.mc.commands.send_login_sync, [contact, password])
             if result is None:
                 logger.warning(f"[{name}] Login failed")
                 return False
