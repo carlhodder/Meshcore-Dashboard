@@ -745,6 +745,7 @@ class MeshcorePoller:
 
                     # Bits 0-5 store path hash count / hop count (0-63)
                     # Bits 6-7 store path hash size minus 1
+                    hops = self._path_len_to_hops(int(raw_str[2:4]))
                     path_len = int(raw_str[2:4], 16) & 0x1F
                     path_chars = (((int(raw_str[2:4], 16) & 0xC0) >> 6) + 1) * 2
                     payload_hex_start = 4 + path_len * path_chars
@@ -774,7 +775,7 @@ class MeshcorePoller:
 
                         path_str = " > ".join(h["id"] for h in decoded_path)
                         self._pending_rx_paths.append(
-                            (_time.time(), path_len, path_str)
+                            (_time.time(), hops, path_str)
                         )
                         self._pending_rx_paths = self._pending_rx_paths[-20:]
 
@@ -848,7 +849,6 @@ class MeshcorePoller:
                         # Use the decoded RF path as a route update for this node
                         if pubkey_hex and path_len >= 0:
                             route_str = " > ".join(h["id"] for h in decoded_path)
-                            hops = self._path_len_to_hops(path_len)
                             self.add_to_contact_routes(pubkey_hex, hops, route_str)
                             logger.debug(
                                 f"[advert path] {name_str or pubkey_hex[:8]}: hops={hops}, path={'flood' if hops == -1 else route_str or 'direct'}"
@@ -945,9 +945,7 @@ class MeshcorePoller:
 
     def _path_len_to_hops(self, path_len):
         try:
-            hops = int(path_len)
-            if hops == 255:
-                hops = 0
+            hops = int(path_len) & 0x1F
         except (TypeError, ValueError):
             hops = -1
 

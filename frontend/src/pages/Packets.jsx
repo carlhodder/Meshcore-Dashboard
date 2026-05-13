@@ -167,8 +167,8 @@ export default function Packets() {
     const routeType = header & 0x03;
     const payloadType = (header >> 2) & 0x0f;
     const routeNames = ["Direct", "Flood", "Routed", "Reply"];
-
-    const pathLen = parseInt(raw.slice(2, 4), 16);
+    const pathLen = parseInt(raw.slice(2, 4), 16) & 0x1F;
+    const pathChars = (parseInt(raw.slice(2, 4), 16) >> 6)  + 1;
     const pathArr = evt.path || [];
 
     const segments = [];
@@ -186,9 +186,9 @@ export default function Packets() {
     });
 
     for (let i = 0; i < pathLen; i++) {
-      const hp = 4 + i * 2;
+      const hp = 4 + i * pathChars;
       if (hp + 2 > raw.length) break;
-      const hopHex = raw.slice(hp, hp + 2);
+      const hopHex = raw.slice(hp, hp + pathChars);
       const hopInfo = pathArr[i];
       const hopName =
         hopInfo && hopInfo.name !== hopInfo.id ? hopInfo.name : "";
@@ -200,7 +200,7 @@ export default function Packets() {
       });
     }
 
-    const plStart = 4 + pathLen * 2;
+    const plStart = 4 + pathLen * pathChars;
     const pl = raw.slice(plStart);
 
     if (payloadType === 4 && pl.length >= 218) {
