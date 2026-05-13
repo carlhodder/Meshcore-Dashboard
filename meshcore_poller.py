@@ -467,15 +467,15 @@ class MeshcorePoller:
                 if stored_path and stored_hops == hops:
                     path = stored_path
                 if not path:
-                    _, cached_path = self.get_cached_contact_route(sender_pubkey)
-                    if cached_path:
+                    cached_hops, cached_path = self.get_cached_contact_route(sender_pubkey)
+                    if cached_hops == hops and cached_path:
                         path = cached_path
                 if not path:
                     import time as _time
 
                     now = _time.time()
                     for rx_ts, rx_hops, rx_path in reversed(self._pending_rx_paths):
-                        if now - rx_ts < 10.0 and abs(rx_hops - hops) <= 1 and rx_path:
+                        if now - rx_ts < 10.0 and rx_hops == hops and rx_path:
                             path = rx_path
                             break
                 # Still no path — fire-and-forget path discovery so future messages work
@@ -747,11 +747,11 @@ class MeshcorePoller:
                     # Bits 6-7 store path hash size minus 1
                     path_len = int(raw_str[2:4], 16) & 0x1F
                     path_chars = (((int(raw_str[2:4], 16) & 0xC0) >> 6) + 1) * 2
-                    payload_hex_start = (2 + path_len) * path_chars
+                    payload_hex_start = 4 + path_len * path_chars
 
                     # Decode each hop in the path
                     for i in range(path_len):
-                        hop_hex_pos = 2 + i * path_chars
+                        hop_hex_pos = 4 + i * path_chars
                         if hop_hex_pos + path_chars > len(raw_str):
                             break
                         hop_id = raw_str[hop_hex_pos : hop_hex_pos + path_chars].upper()[:self._cfg.node_id_chars]
@@ -1116,8 +1116,8 @@ class MeshcorePoller:
                     else (key.hex() if isinstance(key, bytes) else str(key))
                 )
                 name = contact.get("name", "") if isinstance(contact, dict) else ""
-                if pk and name and len(pk) >= 2:
-                    self._cache_node_name(pk[:2], name)
+                if pk and name and len(pk) >= self._cfg.node_id_chars:
+                    self._cache_node_name(pk[:self._cfg.node_id_chars], name)
 
             if not silent:
                 logger.info(f"Loaded {len(self._contacts)} contacts from companion")
@@ -1179,9 +1179,7 @@ class MeshcorePoller:
                 or contact.get("display_name")
                 or ""
             )
-            name = name.strip() if isinstance(name, str) else ""
-            if not name:
-                name = pk[:8]  # fall back to pubkey prefix so it's never blank
+            name = (name.strip() if isinstance(name, str) else None) or pk[:8] 
             last_seen = contact.get(
                 "last_advert", contact.get("last_seen", contact.get("ts", None))
             )
