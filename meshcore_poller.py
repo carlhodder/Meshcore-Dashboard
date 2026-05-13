@@ -802,8 +802,8 @@ class MeshcorePoller:
                             lon_int = int.from_bytes(
                                 bytes.fromhex(pl[210:218]), "little", signed=True
                             )
-                            advert_lat = round(lat_int / 1e7, 6)
-                            advert_lon = round(lon_int / 1e7, 6)
+                            advert_lat = round(lat_int / 1e6, 6)
+                            advert_lon = round(lon_int / 1e6, 6)
                         # name: bytes 109+ (218 hex chars into payload)
                         name_hex = pl[218:] if len(pl) > 218 else ""
                         if len(name_hex) % 2:
