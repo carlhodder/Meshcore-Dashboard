@@ -743,16 +743,18 @@ class MeshcorePoller:
                         payload_type, f"Type {payload_type}"
                     )
 
-                    # Byte 1 = path length (N), bytes 2 to 2+N-1 = hop IDs (1 byte each)
-                    path_len = int(raw_str[2:4], 16) if len(raw_str) >= 4 else 0
-                    payload_hex_start = (2 + path_len) * 2
+                    # Bits 0-5 store path hash count / hop count (0-63)
+                    # Bits 6-7 store path hash size minus 1
+                    path_len = int(raw_str[2:4], 16) & 0x1F
+                    path_chars = (((int(raw_str[2:4], 16) & 0xC0) >> 6) + 1) * 2
+                    payload_hex_start = (2 + path_len) * path_chars
 
                     # Decode each hop in the path
                     for i in range(path_len):
-                        hop_hex_pos = 4 + i * 2
-                        if hop_hex_pos + 2 > len(raw_str):
+                        hop_hex_pos = 2 + i * path_chars
+                        if hop_hex_pos + path_chars > len(raw_str):
                             break
-                        hop_id = raw_str[hop_hex_pos : hop_hex_pos + 2].upper()
+                        hop_id = raw_str[hop_hex_pos : hop_hex_pos + path_chars].upper()[:self._cfg.node_id_chars]
                         hop_name = self._node_id_name_cache.get(hop_id, "")
                         if not hop_name:
                             resolved = self._resolve_contact_name(hop_id)
@@ -763,6 +765,7 @@ class MeshcorePoller:
                     _MSG_PAYLOAD_TYPES = {
                         0, # Request
                         2, # Text message
+                        4, # Advert
                         5, # Group Text
                         7, # Anon Req
                     }  # Request, Group Text, Anon Req, Text Msg
@@ -799,8 +802,8 @@ class MeshcorePoller:
                             lon_int = int.from_bytes(
                                 bytes.fromhex(pl[210:218]), "little", signed=True
                             )
-                            advert_lat = round(lat_int / 1e6, 6)
-                            advert_lon = round(lon_int / 1e6, 6)
+                            advert_lat = round(lat_int / 1e7, 6)
+                            advert_lon = round(lon_int / 1e7, 6)
                         # name: bytes 109+ (218 hex chars into payload)
                         name_hex = pl[218:] if len(pl) > 218 else ""
                         if len(name_hex) % 2:
@@ -845,11 +848,6 @@ class MeshcorePoller:
                         # Use the decoded RF path as a route update for this node
                         if pubkey_hex and path_len >= 0:
                             route_str = " > ".join(h["id"] for h in decoded_path)
-                            cache_key = (
-                                pubkey_hex[:4].upper()
-                                if len(pubkey_hex) >= 4
-                                else pubkey_hex[:2].upper()
-                            )
                             hops = self._path_len_to_hops(path_len)
                             self.add_to_contact_routes(pubkey_hex, hops, route_str)
                             logger.debug(
