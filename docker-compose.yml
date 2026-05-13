@@ -1,8 +1,11 @@
 services:
   dashboard:
-    build: .
+    init: true
+    build:
+      context: .
     ports:
       - "8080:8080"
+      - "5678:5678"
     volumes:
       # Persist settings and database outside the container.
       - ./data:/app/data

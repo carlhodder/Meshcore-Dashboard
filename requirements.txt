@@ -4,3 +4,4 @@ meshcore>=2.3.0
 pydantic>=2.13.3
 peewee>=4.0.5
 python-dateutil>=2.9.0
+debugpy>=1.8.20

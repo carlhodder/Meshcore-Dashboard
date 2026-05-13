@@ -1,29 +1,28 @@
-FROM python:3.12-slim
+FROM node:lts-trixie
+
+ENV CI=true
+
+# Install Node.js, curl, and pnpm
+RUN apt-get update && apt-get install -y curl python3 python3-venv python3-pip \
+    && npm install -g pnpm \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Node.js and curl
-RUN apt-get update && apt-get install -y curl \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt --break-system-packages
+
+# Copy package files first
+RUN mkdir -p /pnpm-store 
+COPY frontend/package.json pnpm-*.yml frontend/
+
+# Install frontend dependencies
+RUN cd frontend && pnpm config set store-dir /pnpm-store && pnpm install
 
 # Copy application code
 COPY . .
 
-# Create non-root user and data directory, fix permissions
-RUN useradd -m meshcore \
-    && chown -R meshcore:meshcore /app
-
-USER meshcore
-
-# Install frontend dependencies
-RUN cd frontend && npm install
-
 EXPOSE 8080
 
-CMD (trap 'kill 0' SIGINT; uvicorn app:app --host 127.0.0.1 --port 8088 --reload & cd frontend && npm run dev -- --host 0.0.0.0 --port 8080 & wait)
+CMD /bin/bash -c '(trap "kill 0" INT TERM; python3 -m debugpy --listen 0.0.0.0:5678 -m uvicorn app:app --host 127.0.0.1 --port 8088 --reload & cd frontend && pnpm run dev --host 0.0.0.0 --port 8080 & wait)'
