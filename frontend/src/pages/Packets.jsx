@@ -168,7 +168,7 @@ export default function Packets() {
     const payloadType = (header >> 2) & 0x0f;
     const routeNames = ["Direct", "Flood", "Routed", "Reply"];
     const pathLen = parseInt(raw.slice(2, 4), 16) & 0x1F;
-    const pathChars = (parseInt(raw.slice(2, 4), 16) >> 6)  + 1;
+    const pathChars = ((parseInt(raw.slice(2, 4), 16) >> 6)  + 1) * 2;
     const pathArr = evt.path || [];
 
     const segments = [];
