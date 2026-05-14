@@ -817,21 +817,31 @@ class DataStore:
                     with db.connection_context():
                         self._repeaters[pubkey].save()
 
-    def get_most_recent_neighbours(self):
+    # Given a timestamp (current time if none) find the most recent neighbours for each neighbour.
+    # Then remove results that are older than cutoff_hours from the most recent of those results.
+    def get_most_recent_neighbours(self, at_ts=None, cutoff_hours=None):
+        upper_time_limit = at_ts or time.time()
+        ts_limit_offset = (
+            (cutoff_hours or 3 * self.cfg.neighbours_check_hours) * 60 * 60
+        )
         try:
             with db.connection_context():
-                subquery = Neighbour.select(
-                    Neighbour.pubkey,
-                    Neighbour.pubkey_remote,
-                    Neighbour.timestamp,
-                    Neighbour.snr,
-                    fn.ROW_NUMBER()
-                    .over(
-                        partition_by=[Neighbour.pubkey, Neighbour.pubkey_remote],
-                        order_by=[Neighbour.timestamp.desc()],
+                subquery = (
+                    Neighbour.select(
+                        Neighbour.pubkey,
+                        Neighbour.pubkey_remote,
+                        Neighbour.timestamp,
+                        Neighbour.snr,
+                        fn.ROW_NUMBER()
+                        .over(
+                            partition_by=[Neighbour.pubkey, Neighbour.pubkey_remote],
+                            order_by=[Neighbour.timestamp.desc()],
+                        )
+                        .alias("row_rank"),
                     )
-                    .alias("row_rank"),
-                ).alias("top_n_subq")
+                    .where(Neighbour.timestamp <= upper_time_limit)
+                    .alias("top_n_subq")
+                )
                 query = (
                     Neighbour.select(
                         subquery.c.pubkey,
@@ -842,7 +852,19 @@ class DataStore:
                     .from_(subquery)
                     .where(subquery.c.row_rank == 1)
                 )
-                return list(query.dicts())
+                neighbour_dicts = list(query.dicts())
+                # Now filter out any values that are outside our cutoff per repeater
+                max_ts_dict = {}
+                for neighbour in neighbour_dicts:
+                    max_ts_dict[neighbour["pubkey"]] = max(
+                        max_ts_dict.get(neighbour["pubkey"], 0), neighbour["timestamp"]
+                    )
+                return [
+                    n
+                    for n in neighbour_dicts
+                    if n["timestamp"]
+                    >= (max_ts_dict.get(n["pubkey"]) - ts_limit_offset)
+                ]
         except Exception as e:
             print(f"[DataStore] Neighbour retrieve error: {e}")
 
