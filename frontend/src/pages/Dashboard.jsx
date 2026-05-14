@@ -578,7 +578,7 @@ export default function Dashboard() {
                             setRemoteAdminNode({
                               pubkey: r.pubkey,
                               name: r.name,
-                              lastLogin: r.lastLogin,
+                              last_login_timestamp: r.last_login_timestamp,
                             });
                           }}
                         >
