@@ -70,7 +70,7 @@ class MeshcorePoller:
         for k, name in self._node_id_name_cache.items():
             if k.starts_wtih(node_id[:12].lower()):
                 return name
-        return None 
+        return None
 
     @property
     def is_connected(self) -> bool:
@@ -706,7 +706,9 @@ class MeshcorePoller:
             hops, route = next(iter(routes_dict.keys()))
             if route:
                 # Reformat route to setting
-                route = " > ".join(r.strip()[: self._cfg.node_id_chars] for r in route.split(" > "))
+                route = " > ".join(
+                    r.strip()[: self._cfg.node_id_chars] for r in route.split(" > ")
+                )
             all_routes[pubkey] = {"hops": hops, "route": route}
         return all_routes
 
@@ -765,9 +767,7 @@ class MeshcorePoller:
                         hop_hex_pos = 4 + i * path_chars
                         if hop_hex_pos + path_chars > len(raw_str):
                             break
-                        hop_id = raw_str[
-                            hop_hex_pos : hop_hex_pos + path_chars
-                        ].lower()
+                        hop_id = raw_str[hop_hex_pos : hop_hex_pos + path_chars].lower()
                         hop_name = self._get_cached_node_name(hop_id)
                         decoded_path.append({"id": hop_id, "name": hop_name or hop_id})
 
@@ -880,8 +880,8 @@ class MeshcorePoller:
             if pubkey:
                 # If this matches a repeater then update the clock:
                 self.__try_get_and_update_timestamp(pubkey, payload)
-                name = self._resolve_contact_name(pubkey) 
-                
+                name = self._resolve_contact_name(pubkey)
+
                 # Cache pubkey first byte → name so _on_rx_log can resolve node IDs
                 if len(pubkey) >= 12 and name and name != pubkey[:12]:
                     self._cache_node_name(pubkey[:12], name)
@@ -954,7 +954,7 @@ class MeshcorePoller:
         Returns (hops: int, path: str) — hops is -1 if unknown."""
         hops = self._path_len_to_hops(path_len)
         if hops < 0:
-            return -1, None, None
+            return -1, None
         path_str = ""
         if out_path and hops > 0:
             # If no spaces, treat as compact hex — segment same way as bytes
@@ -972,7 +972,7 @@ class MeshcorePoller:
             else:
                 path_str = out_path  # already formatted
 
-        return hops, path_str, 
+        return hops, path_str
 
     def _decode_path_chips(self, path_str: str) -> list:
         """Convert a path string like 'C2 > 1A > 04' into [{id, name}, ...] using the name cache."""
@@ -983,17 +983,22 @@ class MeshcorePoller:
             seg = seg.strip().lower()
             if not seg:
                 continue
-            # Use first 2 hex chars (1 byte) as the node ID key (packet spec)
-            node_id = seg[:len(seg[0])]
+            # Use first route entry to determine path hash size
+            node_id = seg[: len(seg[0])]
             name = self._get_cached_node_name(node_id)
-            chips.append({"id": node_id[: self._cfg.node_id_chars], "name": name or node_id})
+            # Reduce node id to app setting for display/logging
+            chips.append(
+                {"id": node_id[: self._cfg.node_id_chars], "name": name or node_id}
+            )
         return chips
 
     def _resolve_contact_name(self, pubkey_prefix: str) -> str:
         if not pubkey_prefix:
             return "Unknown"
         for key, contact in self._contacts.items():
-            if key.lower() == pubkey_prefix[:12].lower() or key.starts_with(pubkey_prefix):
+            if key.lower() == pubkey_prefix[:12].lower() or key.starts_with(
+                pubkey_prefix
+            ):
                 return contact.get("name") or pubkey_prefix[:12]
         return pubkey_prefix[:12]
 
@@ -1327,13 +1332,19 @@ class MeshcorePoller:
                     await self.mc.commands.change_contact_path(contact, "")
                 else:
                     path_hash_mode = None
-                    segments = re.split(r',;> ', custom_path)
+                    segments = [
+                        a.strip()
+                        for a in re.split(r"[,;> ]", custom_path)
+                        if a and a.strip()
+                    ]
                     if segments:
                         path_hash_mode = len(segments[0]) / 2 - 1
                     path_bytes = bytes.fromhex(
-                            custom_path.replace(",", "").replace(">", "")
-                        )
-                    await self.mc.commands.change_contact_path(contact, path_bytes.hex(), path_hash_mode)
+                        custom_path.replace(",", "").replace(">", "")
+                    )
+                    await self.mc.commands.change_contact_path(
+                        contact, path_bytes.hex(), path_hash_mode
+                    )
                 logger.info(f"[{name}] Set custom path: {custom_path}")
             else:
                 # Whereas this expects bytes (IIRC it may cast if necessary)
