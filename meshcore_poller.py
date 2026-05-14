@@ -1,5 +1,5 @@
 import asyncio
-import json
+import re
 import logging
 import time
 import urllib.request
@@ -51,9 +51,6 @@ class MeshcorePoller:
         self._contact_routes: dict = (
             {}
         )  # pubkey_prefix (upper) → (hops, route_path) for all contacts
-        self._pending_rx_paths: list = (
-            []
-        )  # [(ts, hops, path)] — recent RF paths for msg correlation
         self._msg_drained = False
         self._dont_save_contact_msgs = (
             False  # Don't save app command replies to private messages
@@ -61,11 +58,19 @@ class MeshcorePoller:
 
     def _cache_node_name(self, node_id: str, name: str):
         """Store a node ID → name mapping and persist it to the database."""
-        node_id = node_id.upper()
+        node_id = node_id.lower()[:12]
         if self._node_id_name_cache.get(node_id) == name:
             return  # no change, skip write
         self._node_id_name_cache[node_id] = name
         self.store.save_node_names({node_id: name})
+
+    def _get_cached_node_name(self, node_id):
+        # If we get a request with an id smaller than 12 we return the first match.
+        # This is for supporting pathing on smaller packet hops (e.g 2 char)
+        for k, name in self._node_id_name_cache.items():
+            if k.starts_wtih(node_id[:12].lower()):
+                return name
+        return None 
 
     @property
     def is_connected(self) -> bool:
@@ -211,7 +216,7 @@ class MeshcorePoller:
 
                     if contact is None:
                         logger.warning(
-                            f"[{name}] No contact found for pubkey {pubkey[:16]}... "
+                            f"[{name}] No contact found for pubkey {pubkey[:12]}... "
                             f"(is the repeater in range?)"
                         )
                         if i < len(repeaters) - 1:
@@ -472,21 +477,13 @@ class MeshcorePoller:
                     )
                     if cached_hops == hops and cached_path:
                         path = cached_path
-                if not path:
-                    import time as _time
-
-                    now = _time.time()
-                    for rx_ts, rx_hops, rx_path in reversed(self._pending_rx_paths):
-                        if now - rx_ts < 10.0 and rx_hops == hops and rx_path:
-                            path = rx_path
-                            break
                 # Still no path — fire-and-forget path discovery so future messages work
                 if not path:
-                    contact_obj = self._find_contact(sender_pubkey)
-                    if contact_obj is not None:
+                    contact = self._find_contact(sender_pubkey)
+                    if contact is not None:
                         asyncio.ensure_future(
                             self._discover_path(
-                                contact_obj,
+                                contact,
                                 sender_pubkey,
                                 sender_name,
                                 configured_contact=False,
@@ -666,7 +663,7 @@ class MeshcorePoller:
             # Bad data, don't store.
             return
 
-        node_key = pubkey[: self._cfg.node_id_chars]
+        node_key = pubkey[:12].lower()
         # Create or increment hope, route counter
         self._contact_routes.setdefault(node_key, {}).setdefault(
             (hops, processed_route), 0
@@ -697,7 +694,7 @@ class MeshcorePoller:
                 self._contact_routes[node_key][k] *= 0.9 / min_freq_count
 
     def get_cached_contact_route(self, pubkey):
-        node_key = pubkey[: self._cfg.node_id_chars]
+        node_key = pubkey[:12].lower()
         if node_key not in self._contact_routes:
             return None, None
 
@@ -707,6 +704,9 @@ class MeshcorePoller:
         all_routes = {}
         for pubkey, routes_dict in self._contact_routes.items():
             hops, route = next(iter(routes_dict.keys()))
+            if route:
+                # Reformat route to setting
+                route = " > ".join(r.strip()[: self._cfg.node_id_chars] for r in route.split(" > "))
             all_routes[pubkey] = {"hops": hops, "route": route}
         return all_routes
 
@@ -767,27 +767,9 @@ class MeshcorePoller:
                             break
                         hop_id = raw_str[
                             hop_hex_pos : hop_hex_pos + path_chars
-                        ].upper()[: self._cfg.node_id_chars]
-                        hop_name = self._node_id_name_cache.get(hop_id, "")
-                        if not hop_name:
-                            resolved = self._resolve_contact_name(hop_id)
-                            hop_name = resolved if resolved != hop_id else ""
+                        ].lower()
+                        hop_name = self._get_cached_node_name(hop_id)
                         decoded_path.append({"id": hop_id, "name": hop_name or hop_id})
-
-                    # Stash path for message-type packets so _on_contact/channel_msg can use it
-                    _MSG_PAYLOAD_TYPES = {
-                        0,  # Request
-                        2,  # Text message
-                        4,  # Advert
-                        5,  # Group Text
-                        7,  # Anon Req
-                    }  # Request, Group Text, Anon Req, Text Msg
-                    if payload_type in _MSG_PAYLOAD_TYPES and decoded_path:
-                        import time as _time
-
-                        path_str = " > ".join(h["id"] for h in decoded_path)
-                        self._pending_rx_paths.append((_time.time(), hops, path_str))
-                        self._pending_rx_paths = self._pending_rx_paths[-20:]
 
                     advert_data = None
                     if payload_type == 4 and len(raw_str) >= payload_hex_start + 218:
@@ -831,7 +813,7 @@ class MeshcorePoller:
                         if len(name_str) >= 2:
                             node_label = name_str
                             if pubkey_hex:
-                                self._cache_node_name(pubkey_hex[0:2], name_str)
+                                self._cache_node_name(pubkey_hex[:12], name_str)
                                 # Persist advert-discovered node to DB for map display
                                 self.store.upsert_advert_node(
                                     pubkey=pubkey_hex,
@@ -894,14 +876,15 @@ class MeshcorePoller:
             payload = event.payload if hasattr(event, "payload") else {}
             if not isinstance(payload, dict):
                 return
-            pubkey = str(payload.get("pubkey", payload.get("public_key", "")))
-            name = self._resolve_contact_name(pubkey) if pubkey else ""
-            # If this matches a repeater then update the clock:
-            self.__try_get_and_update_timestamp(pubkey, payload)
-
-            # Cache pubkey first byte → name so _on_rx_log can resolve node IDs
-            if pubkey and len(pubkey) >= 2 and name and name != pubkey[:8]:
-                self._cache_node_name(pubkey[:2], name)
+            pubkey = payload.get("public_key")
+            if pubkey:
+                # If this matches a repeater then update the clock:
+                self.__try_get_and_update_timestamp(pubkey, payload)
+                name = self._resolve_contact_name(pubkey) 
+                
+                # Cache pubkey first byte → name so _on_rx_log can resolve node IDs
+                if len(pubkey) >= 12 and name and name != pubkey[:12]:
+                    self._cache_node_name(pubkey[:12], name)
         except Exception as e:
             logger.debug(f"Error handling ADVERTISEMENT: {e}")
 
@@ -971,13 +954,13 @@ class MeshcorePoller:
         Returns (hops: int, path: str) — hops is -1 if unknown."""
         hops = self._path_len_to_hops(path_len)
         if hops < 0:
-            return -1, None
+            return -1, None, None
         path_str = ""
-        if out_path:
+        if out_path and hops > 0:
             # If no spaces, treat as compact hex — segment same way as bytes
             if " " not in out_path and hops > 0:
                 chars_per_node = len(out_path) // hops
-                if chars_per_node in (2, 4):
+                if chars_per_node in (2, 4, 6):
                     segs = [
                         out_path[i : i + chars_per_node]
                         for i in range(0, len(out_path), chars_per_node)
@@ -985,11 +968,11 @@ class MeshcorePoller:
                     ]
                     path_str = " > ".join(segs)
                 else:
-                    path_str = out_path  # unknown format — store as-is
+                    path_str = None  # unknown format — discard
             else:
-                path_str = out_path  # already formatted or single segment
+                path_str = out_path  # already formatted
 
-        return hops, path_str
+        return hops, path_str, 
 
     def _decode_path_chips(self, path_str: str) -> list:
         """Convert a path string like 'C2 > 1A > 04' into [{id, name}, ...] using the name cache."""
@@ -997,33 +980,22 @@ class MeshcorePoller:
             return []
         chips = []
         for seg in path_str.split(">"):
-            seg = seg.strip().upper()
+            seg = seg.strip().lower()
             if not seg:
                 continue
-            # Use first 2 hex chars (1 byte) as the node ID key
-            node_id = seg[:2]
-            name = self._node_id_name_cache.get(node_id, "")
-            if not name:
-                resolved = self._resolve_contact_name(node_id)
-                name = resolved if resolved != node_id else ""
-            chips.append({"id": node_id, "name": name or node_id})
+            # Use first 2 hex chars (1 byte) as the node ID key (packet spec)
+            node_id = seg[:len(seg[0])]
+            name = self._get_cached_node_name(node_id)
+            chips.append({"id": node_id[: self._cfg.node_id_chars], "name": name or node_id})
         return chips
 
     def _resolve_contact_name(self, pubkey_prefix: str) -> str:
         if not pubkey_prefix:
             return "Unknown"
         for key, contact in self._contacts.items():
-            pk = (
-                key
-                if isinstance(key, str)
-                else (key.hex() if isinstance(key, bytes) else str(key))
-            )
-            if pk.startswith(
-                pubkey_prefix[:8].upper()
-            ) or pubkey_prefix.upper().startswith(pk[:8]):
-                name = contact.get("name", "") if isinstance(contact, dict) else ""
-                return name if name else pubkey_prefix[:8]
-        return pubkey_prefix[:8]
+            if key.lower() == pubkey_prefix[:12].lower() or key.starts_with(pubkey_prefix):
+                return contact.get("name") or pubkey_prefix[:12]
+        return pubkey_prefix[:12]
 
     async def send_channel_message(self, channel_idx: int, text: str) -> dict:
         if not self.mc:
@@ -1061,11 +1033,7 @@ class MeshcorePoller:
             result = await self.mc.commands.send_msg(contact, text)
             if result.type == EventType.ERROR:
                 return {"ok": False, "error": str(result.payload)}
-            name = (
-                contact.get("name", pubkey[:8])
-                if isinstance(contact, dict)
-                else pubkey[:8]
-            )
+            name = contact.get("name", pubkey[:12])
             ack_code = self._extract_ack_code(result)
             if not ack_code:
                 logger.debug(
@@ -1090,24 +1058,19 @@ class MeshcorePoller:
 
             contacts = result.payload
             if isinstance(contacts, dict):
-                self._contacts = {k.upper(): v for k, v in contacts.items()}
+                self._contacts = {k.lower()[:12]: v for k, v in contacts.items()}
             elif isinstance(contacts, list):
                 self._contacts = {}
                 for c in contacts:
                     pk = c.get("public_key", "")
                     if pk:
-                        self._contacts[pk.upper()] = c
+                        self._contacts[pk.lower()[:12]] = c
 
             # Pre-populate node ID → name cache from loaded contacts
             for key, contact in self._contacts.items():
-                pk = (
-                    key
-                    if isinstance(key, str)
-                    else (key.hex() if isinstance(key, bytes) else str(key))
-                )
                 name = contact.get("name", "") if isinstance(contact, dict) else ""
-                if pk and name and len(pk) >= self._cfg.node_id_chars:
-                    self._cache_node_name(pk[: self._cfg.node_id_chars], name)
+                if key and name and len(key) >= 12:
+                    self._cache_node_name(key, name)
 
             if not silent:
                 logger.info(f"Loaded {len(self._contacts)} contacts from companion")
@@ -1116,38 +1079,19 @@ class MeshcorePoller:
 
     def _find_contact(self, pubkey: str):
         """Find a contact matching the configured pubkey (full or prefix)."""
-        upper_pubkey = pubkey.upper()
-        if upper_pubkey in self._contacts:
-            return self._contacts[upper_pubkey]
+        lower_pubkey = pubkey.lower()[:12]
+        if lower_pubkey in self._contacts:
+            return self._contacts[lower_pubkey]
 
         for key, contact in self._contacts.items():
-            pk = (
-                key
-                if isinstance(key, str)
-                else key.hex() if isinstance(key, bytes) else str(key)
-            )
-            if pk.startswith(upper_pubkey) or upper_pubkey.startswith(pk):
+            if key.lower() == lower_pubkey:
                 return contact
-
-            inner_pk = contact.get("public_key", "")
-            if isinstance(inner_pk, bytes):
-                inner_pk = inner_pk.hex()
-            if inner_pk.startswith(upper_pubkey) or upper_pubkey.startswith(inner_pk):
-                return contact
-
         return None
 
     def get_mesh_contacts(self) -> list:
         """Return all known mesh contacts (configured + unknown) with GPS and routing data."""
         result = []
-        for key, contact in self._contacts.items():
-            if not isinstance(contact, dict):
-                continue
-            pk = (
-                key
-                if isinstance(key, str)
-                else (key.hex() if isinstance(key, bytes) else str(key))
-            )
+        for pk, contact in self._contacts.items():
             lat = contact.get("adv_lat", 0.0) or 0.0
             lon = contact.get("adv_lon", 0.0) or 0.0
 
@@ -1168,7 +1112,7 @@ class MeshcorePoller:
                 or contact.get("display_name")
                 or ""
             )
-            name = (name.strip() if isinstance(name, str) else None) or pk[:8]
+            name = (name.strip() if isinstance(name, str) else None) or pk[:12]
             last_seen = contact.get(
                 "last_advert", contact.get("last_seen", contact.get("ts", None))
             )
@@ -1379,10 +1323,17 @@ class MeshcorePoller:
             if custom_path is not None:
                 # Convert to bytes (fromhex ignores spaces) and back to string to clean.
                 # NOTE: As of 2.3.0 this method will throw if you send bytes
-                path_bytes = bytes.fromhex(
-                    custom_path.replace(",", "").replace(">", "")
-                )
-                await self.mc.commands.change_contact_path(contact, path_bytes.hex())
+                if custom_path.strip() == "":
+                    await self.mc.commands.change_contact_path(contact, "")
+                else:
+                    path_hash_mode = None
+                    segments = re.split(r',;> ', custom_path)
+                    if segments:
+                        path_hash_mode = len(segments[0]) / 2 - 1
+                    path_bytes = bytes.fromhex(
+                            custom_path.replace(",", "").replace(">", "")
+                        )
+                    await self.mc.commands.change_contact_path(contact, path_bytes.hex(), path_hash_mode)
                 logger.info(f"[{name}] Set custom path: {custom_path}")
             else:
                 # Whereas this expects bytes (IIRC it may cast if necessary)
@@ -1602,7 +1553,7 @@ class MeshcorePoller:
         if error:
             return {"ok": False, "error": error}
 
-        name = repeater_cfg.name or pubkey[:8]
+        name = repeater_cfg.name or pubkey[:12]
         start = time.monotonic()
         try:
             await self._poll_repeater(contact, repeater_cfg, manual=True)
@@ -1624,7 +1575,7 @@ class MeshcorePoller:
         if error:
             return {"ok": False, "error": error}
 
-        name = repeater_cfg.name or pubkey[:8]
+        name = repeater_cfg.name or pubkey[:12]
         try:
             success = await self._login_to_repeater(
                 repeater_cfg.pubkey, contact, name, repeater_cfg.admin_pass
@@ -1653,7 +1604,7 @@ class MeshcorePoller:
         if error:
             return {"ok": False, "error": error}
 
-        name = repeater_cfg.name or pubkey[:8]
+        name = repeater_cfg.name or pubkey[:12]
         try:
             success = await self._login_to_repeater(
                 repeater_cfg.pubkey, contact, name, repeater_cfg.admin_pass
@@ -1686,7 +1637,7 @@ class MeshcorePoller:
         if error:
             return {"ok": False, "error": error}
 
-        name = repeater_cfg.name or pubkey[:8]
+        name = repeater_cfg.name or pubkey[:12]
         try:
             success = await self._login_to_repeater(
                 repeater_cfg.pubkey, contact, name, repeater_cfg.admin_pass
