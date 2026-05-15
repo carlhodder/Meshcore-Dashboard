@@ -1,0 +1,83 @@
+.card {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid #334155;
+  transition:
+    border-color 0.3s,
+    transform 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.card:hover {
+  border-color: #38bdf8;
+  transform: translateY(-2px);
+}
+
+.card-history-block {
+  cursor: pointer;
+  height: 100%;
+}
+
+.drag-over {
+  border-color: #38bdf8;
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(56, 189, 248, 0.2);
+}
+
+.card-paused {
+  color: #64748b !important;
+}
+.card-paused * {
+  color: #64748b !important;
+}
+
+.battery-warning-container {
+}
+
+.battery-warning {
+  background: #ef444430;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: auto;
+}
+
+/* Colors for dynamic classes */
+.metric-good {
+  color: #22c55e;
+}
+.metric-good-white {
+  color: #ffffff;
+}
+.metric-mid {
+  color: #eab308;
+}
+.metric-bad {
+  color: #ef4444;
+}
+
+@media (max-width: 640px) {
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 900px) {
+  .metrics {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

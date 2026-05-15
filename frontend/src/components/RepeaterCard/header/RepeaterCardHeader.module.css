@@ -1,0 +1,21 @@
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #334155;
+}
+
+.card-name {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: #f1f5f9;
+}
+
+.card-id {
+  font-size: 0.7rem;
+  color: #64748b;
+  font-family: monospace;
+  margin-top: 2px;
+}

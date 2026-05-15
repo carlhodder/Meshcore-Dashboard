@@ -1,0 +1,154 @@
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #334155;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.card-footer-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.card-footer-seen {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.card-footer-route {
+  font-size: 0.68rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.card-offline-text {
+  font-size: 0.7rem;
+  color: #ef4444;
+}
+
+.menu-container {
+  position: relative;
+  display: inline-block;
+}
+
+.hamburger-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 0.3rem;
+  line-height: 1;
+}
+
+.hamburger-btn:hover {
+  color: #f1f5f9;
+}
+
+.popup-menu {
+  display: block;
+  position: absolute;
+  right: 0;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  min-width: 120px;
+  padding: 0.25rem 0;
+  bottom: 100%;
+}
+
+.popup-menu-poll-intervals {
+  bottom: auto;
+  right: auto;
+}
+
+.popup-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #e2e8f0 !important;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.popup-menu button:hover {
+  background: #334155;
+}
+
+.card-ping-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0.1rem 0.55rem;
+  border-radius: 4px;
+  font-family: inherit;
+  line-height: 1.4;
+  min-width: 2.5rem;
+  text-align: center;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.card-ping-btn:hover:not(:disabled) {
+  color: #38bdf8;
+  border-color: #38bdf8;
+}
+
+.card-ping-btn:disabled {
+  cursor: default;
+}
+
+.ping-ok {
+  border-color: #22c55e !important;
+  color: #22c55e !important;
+}
+
+.ping-fail {
+  border-color: #ef4444 !important;
+  color: #ef4444 !important;
+}
+
+.card-footer-route-container {
+}
+.card-footer-fw-container {
+}
+.card-offline-text-container {
+}
+
+.card-footer-fw {
+  display: inline-block;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 20px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+  letter-spacing: 0.02em;
+}
+
+.actions-container {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
