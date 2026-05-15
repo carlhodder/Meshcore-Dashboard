@@ -119,8 +119,7 @@ async def get_recent_neighbours():
 
 @app.get("/api/node-names")
 async def get_node_names():
-    """Return the 2-char node ID → name cache for path hop resolution."""
-    return poller._node_id_name_cache if poller else {}
+    return poller._node_id_name_cache.items() if poller else {}
 
 
 @app.get("/api/contact-routes")
@@ -172,11 +171,11 @@ async def get_map_data():
     if poller:
         try:
             mesh_contacts = poller.get_mesh_contacts()
-        except Exception:
+        except Exception as e:
             pass
     configured_pubkeys = {r["pubkey"] for r in repeaters}
     for c in mesh_contacts:
-        c["configured"] = c["pubkey"] in configured_pubkeys
+        c["configured"] = any(k.lower().startswith(c["pubkey_prefix"].lower()) for k in configured_pubkeys)
 
     # Advert-discovered nodes heard via RF (may include foreign repeaters)
     advert_nodes = store.get_advert_nodes()
@@ -184,8 +183,7 @@ async def get_map_data():
     for n in advert_nodes:
         n["configured"] = any(
             n["pubkey"] == pk
-            or n["pubkey"].startswith(pk)
-            or pk.startswith(n["pubkey"])
+            or pk.lower().startswith(n["pubkey"].lower())
             for pk in configured_pubkeys
         )
 
@@ -194,6 +192,7 @@ async def get_map_data():
         "repeaters": repeaters,
         "contacts": mesh_contacts,
         "advert_nodes": advert_nodes,
+        "node_chars": cfg.node_id_chars,
     }
 
 

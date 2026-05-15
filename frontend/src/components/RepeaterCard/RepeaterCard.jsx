@@ -231,7 +231,7 @@ export default function RepeaterCard({
 
       <RepeaterCardHeader
         name={r.name}
-        pubkeyShort={r.pubkey_short || r.pubkey.substring(0, 12)}
+        pubkeyShort={r.pubkey_prefix || r.pubkey.substring(0, 12)}
         statusClass={statusClass}
       />
 

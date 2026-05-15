@@ -210,7 +210,7 @@ class RepeaterState(BaseDbModel):
     def to_dict(self) -> dict:
         d = model_to_dict(self)
         d["online"] = self.is_online
-        d["pubkey_short"] = self.pubkey[:12] if self.pubkey else ""
+        d["pubkey_prefix"] = self.pubkey[:12] if self.pubkey else ""
         return d
 
     @property
@@ -742,7 +742,7 @@ class DataStore:
         try:
             with db.connection_context():
                 query = NodeName.select()
-                return {row.node_id: row.name for row in query}
+                return {row.node_id[:12].lower(): row.name for row in query}
         except Exception as e:
             print(f"[DataStore] Node names load error: {e}")
             return {}

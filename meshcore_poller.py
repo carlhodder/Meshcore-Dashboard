@@ -56,13 +56,13 @@ class MeshcorePoller:
             False  # Don't save app command replies to private messages
         )
 
-    def _cache_node_name(self, node_id: str, name: str):
+    def _cache_node_name(self, pubkey_prefix: str, name: str):
         """Store a node ID → name mapping and persist it to the database."""
-        node_id = node_id.lower()[:12]
-        if self._node_id_name_cache.get(node_id) == name:
+        pubkey_prefix = pubkey_prefix.lower()[:12]
+        if self._node_id_name_cache.get(pubkey_prefix) == name:
             return  # no change, skip write
-        self._node_id_name_cache[node_id] = name
-        self.store.save_node_names({node_id: name})
+        self._node_id_name_cache[pubkey_prefix] = name
+        self.store.save_node_names({pubkey_prefix: name})
 
     def _get_cached_node_name(self, node_id):
         # If we get a request with an id smaller than 12 we return the first match.
@@ -658,18 +658,19 @@ class MeshcorePoller:
         except Exception as e:
             logger.debug(f"Error handling PATH_RESPONSE event: {e}")
 
-    def add_to_contact_routes(self, pubkey, hops, processed_route):
+    def add_to_contact_routes(self, pubkey_prefix, hops, processed_route, increment=True):
         if hops < 0 or (hops > 1 and not processed_route):
             # Bad data, don't store.
             return
 
-        node_key = pubkey[:12].lower()
-        # Create or increment hope, route counter
-        self._contact_routes.setdefault(node_key, {}).setdefault(
-            (hops, processed_route), 0
-        )
-        self._contact_routes[node_key][(hops, processed_route)] += 1
-
+        node_key = pubkey_prefix[:12].lower()
+        # Create or increment hop, route counter
+        self._contact_routes.setdefault(node_key, {})
+        if (hops, processed_route) not in self._contact_routes[node_key]:
+            self._contact_routes[node_key][(hops, processed_route)] = 1
+        elif increment:
+            self._contact_routes[node_key][(hops, processed_route)] += 1
+        
         # Now only keep top 5 routes by frequency, and keep
         self._contact_routes[node_key] = dict(
             sorted(
@@ -693,8 +694,8 @@ class MeshcorePoller:
             for k in self._contact_routes[node_key].keys():
                 self._contact_routes[node_key][k] *= 0.9 / min_freq_count
 
-    def get_cached_contact_route(self, pubkey):
-        node_key = pubkey[:12].lower()
+    def get_cached_contact_route(self, pubkey_prefix):
+        node_key = pubkey_prefix[:12].lower()
         if node_key not in self._contact_routes:
             return None, None
 
@@ -704,11 +705,6 @@ class MeshcorePoller:
         all_routes = {}
         for pubkey, routes_dict in self._contact_routes.items():
             hops, route = next(iter(routes_dict.keys()))
-            if route:
-                # Reformat route to setting
-                route = " > ".join(
-                    r.strip()[: self._cfg.node_id_chars] for r in route.split(" > ")
-                )
             all_routes[pubkey] = {"hops": hops, "route": route}
         return all_routes
 
@@ -938,12 +934,11 @@ class MeshcorePoller:
 
     def _path_len_to_hops(self, path_len):
         try:
-            # I'm still wary of this, I think there is a difference but internally I can't see
-            # why we would treat 0 hops and direct any differently.
-            if path_len == 255:
-                path_len = 0
-
-            hops = int(path_len) & 0x1F
+            # Ah, so meshcore (C) is 255, meshcore_py alters this to -1
+            if path_len == 255 or path_len == -1:
+                hops = -1
+            else:
+                hops = int(path_len) & 0x1F
         except (TypeError, ValueError):
             hops = -1
 
@@ -1073,7 +1068,13 @@ class MeshcorePoller:
 
             # Pre-populate node ID → name cache from loaded contacts
             for key, contact in self._contacts.items():
-                name = contact.get("name", "") if isinstance(contact, dict) else ""
+                name = contact.get("adv_name", "") if isinstance(contact, dict) else ""
+                hops, route_path = self._extract_hops_path(
+                    contact.get("out_path_len"), contact.get("out_path")
+                )
+                if hops >= 0:
+                    self.add_to_contact_routes(key, hops, route_path)
+                
                 if key and name and len(key) >= 12:
                     self._cache_node_name(key, name)
 
@@ -1082,9 +1083,9 @@ class MeshcorePoller:
         except Exception as e:
             logger.error(f"Contact refresh failed: {e}")
 
-    def _find_contact(self, pubkey: str):
+    def _find_contact(self, pubkey_prefix: str):
         """Find a contact matching the configured pubkey (full or prefix)."""
-        lower_pubkey = pubkey.lower()[:12]
+        lower_pubkey = pubkey_prefix.lower()[:12]
         if lower_pubkey in self._contacts:
             return self._contacts[lower_pubkey]
 
@@ -1100,15 +1101,13 @@ class MeshcorePoller:
             lat = contact.get("adv_lat", 0.0) or 0.0
             lon = contact.get("adv_lon", 0.0) or 0.0
 
-            hops, route_path = self._path_len_to_hops(
+            hops, route_path = self._extract_hops_path(
                 contact.get("out_path_len"), contact.get("out_path")
             )
             # Fall back to contact route cache from PATH_RESPONSE events
             if route_path is None:
-                cached = self.get_cached_contact_route(pk)
-                if cached:
-                    hops = cached[0]
-                    route_path = cached[1]
+                hops, route_path = self.get_cached_contact_route(pk)
+                
             # Try several possible name fields the meshcore SDK may use
             name = (
                 contact.get("name")
@@ -1128,7 +1127,7 @@ class MeshcorePoller:
                     last_seen = None
             result.append(
                 {
-                    "pubkey": pk,
+                    "pubkey_prefix": pk[: self._cfg.node_id_chars],
                     "name": name,
                     "lat": lat,
                     "lon": lon,
@@ -1338,7 +1337,7 @@ class MeshcorePoller:
                         if a and a.strip()
                     ]
                     if segments:
-                        path_hash_mode = len(segments[0]) / 2 - 1
+                        path_hash_mode = int(len(segments[0]) / 2) - 1
                     path_bytes = bytes.fromhex(
                         custom_path.replace(",", "").replace(">", "")
                     )

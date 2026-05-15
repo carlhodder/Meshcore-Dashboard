@@ -368,7 +368,7 @@ export default function MapPage() {
       if (c.configured) return;
       if (!c.lat || !c.lon) return;
       var latlng = [c.lat, c.lon];
-      var prefix2 = c.pubkey ? c.pubkey.substring(0, 2).toUpperCase() : "";
+      var prefix2 = c.pubkey ? c.pubkey.substring(0, 2).toLowerCase() : "";
       var isKnown = !!(prefix2 && mapNodeNamesRef.current[prefix2]);
 
       var ringColor = "#22d3ee";
