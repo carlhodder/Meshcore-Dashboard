@@ -1,3 +1,4 @@
+import { useState, useEffect } from "preact/hooks";
 import styles from "./RepeaterCard.module.css";
 import RepeaterCardHeader from "./header/RepeaterCardHeader";
 import RepeaterCardFooter from "./footer/RepeaterCardFooter";
@@ -102,17 +103,84 @@ export default function RepeaterCard({
   dragOverItem,
   handleSort,
   setHistoryNode,
-  lastPolledMenuOpen,
-  setLastPolledMenuOpen,
-  menuOpen,
-  setMenuOpen,
-  pingStates,
-  pingRepeater,
-  sendAdvert,
-  setClock,
   setRemoteAdminNode,
-  togglePauseRepeater,
+  updateRepeaterData,
 }) {
+  const [pingState, setPingState] = useState({
+    cooldown: 0,
+    cooldownEndTime: 0,
+    result: null,
+  });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [lastPolledMenuOpen, setLastPolledMenuOpen] = useState(false);
+
+  // Ping cooldown timer
+  useEffect(() => {
+    if (pingState.cooldown <= 0) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now() / 1000;
+      const remaining = Math.max(0, Math.ceil(pingState.cooldownEndTime - now));
+
+      if (remaining !== pingState.cooldown) {
+        setPingState((prev) => ({ ...prev, cooldown: remaining }));
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [pingState.cooldown, pingState.cooldownEndTime]);
+
+  const pingRepeater = async (e) => {
+    e.stopPropagation();
+    const now = Date.now() / 1000;
+    setPingState({ cooldown: 30, cooldownEndTime: now + 30, result: null });
+
+    try {
+      const res = await fetch(`/api/ping/${encodeURIComponent(r.pubkey)}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      setPingState((prev) => ({ ...prev, result: data.ok ? "ok" : "fail" }));
+    } catch (err) {
+      console.error(err);
+      setPingState((prev) => ({ ...prev, result: "fail" }));
+    }
+  };
+
+  const sendAdvert = async (e) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    try {
+      await fetch(`/api/advert/${encodeURIComponent(r.pubkey)}`, {
+        method: "POST",
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const setClock = async (e) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    try {
+      await fetch(`/api/set_clock/${encodeURIComponent(r.pubkey)}`, {
+        method: "POST",
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const togglePauseRepeater = async (e) => {
+    e.stopPropagation();
+    try {
+      await fetch(`/api/repeater/${r.pubkey}/pause`, { method: "POST" });
+      if (updateRepeaterData) await updateRepeaterData();
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
   const bPct = batteryPercent(r.battery_mv);
   const isLowBat = r.battery_mv > 0 && bPct <= 25;
   const isOffline = r.last_poll_ok === false;
@@ -259,7 +327,7 @@ export default function RepeaterCard({
         setLastPolledMenuOpen={setLastPolledMenuOpen}
         menuOpen={menuOpen}
         setMenuOpen={setMenuOpen}
-        pingState={pingStates[r.pubkey]}
+        pingState={pingState}
         pingRepeater={pingRepeater}
         sendAdvert={sendAdvert}
         setClock={setClock}

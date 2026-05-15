@@ -39,42 +39,48 @@ export default function RepeaterCardFooter({
   return (
     <div className={styles["card-footer"]}>
       <div className={styles["card-footer-left"]}>
-        <div>
+        <div
+          tabIndex={-1}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) {
+              setLastPolledMenuOpen(false);
+            }
+          }}
+          style={{ position: "relative", display: "inline-block" }}
+        >
           <span
             className={styles["card-footer-seen"]}
             onClick={(e) => {
               e.stopPropagation();
-              setLastPolledMenuOpen(
-                lastPolledMenuOpen === r.pubkey ? null : r.pubkey,
-              );
-              setMenuOpen(null);
+              setLastPolledMenuOpen(!lastPolledMenuOpen);
+              setMenuOpen(false);
             }}
           >
             Last seen: {timeAgoString}
           </span>
+          {lastPolledMenuOpen && (
+            <div
+              className={`${styles["popup-menu"]} ${styles["popup-menu-poll-intervals"]}`}
+            >
+              <table>
+                <tbody>
+                  <tr>
+                    <td>Last poll:</td>
+                    <td>{timeout_date_string(r.last_poll_timestamp)}</td>
+                  </tr>
+                  <tr>
+                    <td>Last neighbours poll:</td>
+                    <td>{timeout_date_string(r.last_neighbour_poll)}</td>
+                  </tr>
+                  <tr>
+                    <td>Last FW poll:</td>
+                    <td>{timeout_date_string(r.last_fw_poll)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-        {lastPolledMenuOpen === r.pubkey && (
-          <div
-            className={`${styles["popup-menu"]} ${styles["popup-menu-poll-intervals"]}`}
-          >
-            <table>
-              <tbody>
-                <tr>
-                  <td>Last poll:</td>
-                  <td>{timeout_date_string(r.last_poll_timestamp)}</td>
-                </tr>
-                <tr>
-                  <td>Last neighbours poll:</td>
-                  <td>{timeout_date_string(r.last_neighbour_poll)}</td>
-                </tr>
-                <tr>
-                  <td>Last FW poll:</td>
-                  <td>{timeout_date_string(r.last_fw_poll)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
         <div className={styles["card-footer-route-container"]}>
           {routeChain && (
             <div className={styles["card-footer-route"]}>{routeChain}</div>
@@ -97,29 +103,37 @@ export default function RepeaterCardFooter({
         <button
           className={pingClass}
           disabled={pingDisabled || r.paused}
-          onClick={(e) => pingRepeater(r.pubkey, e)}
+          onClick={(e) => pingRepeater(e)}
         >
           {pingLabel}
         </button>
-        <div className={styles["menu-container"]}>
+        <div
+          className={styles["menu-container"]}
+          tabIndex={-1}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) {
+              setMenuOpen(false);
+            }
+          }}
+        >
           <button
             className={styles["hamburger-btn"]}
             onClick={(e) => {
               e.stopPropagation();
-              setMenuOpen(menuOpen === r.pubkey ? null : r.pubkey);
-              setLastPolledMenuOpen(null);
+              setMenuOpen(!menuOpen);
+              setLastPolledMenuOpen(false);
             }}
           >
             &#8942;
           </button>
-          {menuOpen === r.pubkey && (
+          {menuOpen && (
             <div className={styles["popup-menu"]}>
-              <button onClick={(e) => sendAdvert(r.pubkey, e)}>Advert</button>
-              <button onClick={(e) => setClock(r.pubkey, e)}>Set clock</button>
+              <button onClick={(e) => sendAdvert(e)}>Advert</button>
+              <button onClick={(e) => setClock(e)}>Set clock</button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setMenuOpen(null);
+                  setMenuOpen(false);
                   setRemoteAdminNode({
                     pubkey: r.pubkey,
                     name: r.name,
@@ -131,8 +145,8 @@ export default function RepeaterCardFooter({
               </button>
               <button
                 onClick={(e) => {
-                  setMenuOpen(null);
-                  togglePauseRepeater(r.pubkey, e);
+                  setMenuOpen(false);
+                  togglePauseRepeater(e);
                 }}
               >
                 {r.paused ? "Start" : "Pause"} Polling

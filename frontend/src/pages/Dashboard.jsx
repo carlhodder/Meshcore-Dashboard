@@ -9,9 +9,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [historyNode, setHistoryNode] = useState(null);
   const [remoteAdminNode, setRemoteAdminNode] = useState(null);
-  const [menuOpen, setMenuOpen] = useState(null);
-  const [pingStates, setPingStates] = useState({});
-  const [lastPolledMenuOpen, setLastPolledMenuOpen] = useState(null);
 
   const dragItem = useRef(null);
   const dragOverItem = useRef(null);
@@ -40,43 +37,6 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (!e.target.closest(".menu-container")) {
-        setMenuOpen(null);
-      }
-      if (!e.target.closest(".popup-menu-poll-intervals")) {
-        setLastPolledMenuOpen(null);
-      }
-    };
-    document.addEventListener("click", handleClick);
-    return () => document.removeEventListener("click", handleClick);
-  }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now() / 1000;
-      setPingStates((prev) => {
-        let changed = false;
-        const next = { ...prev };
-        for (const pk in next) {
-          if (next[pk].cooldown > 0) {
-            const remaining = Math.max(
-              0,
-              Math.ceil(next[pk].cooldownEndTime - now),
-            );
-            if (remaining !== next[pk].cooldown) {
-              next[pk] = { ...next[pk], cooldown: remaining };
-              changed = true;
-            }
-          }
-        }
-        return changed ? next : prev;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   // Poll repeaters
   useEffect(() => {
     updateRepeaterData();
@@ -97,66 +57,6 @@ export default function Dashboard() {
         console.error(err);
         setLoading(false);
       });
-  };
-
-  const pingRepeater = async (pubkey, e) => {
-    e.stopPropagation();
-    const now = Date.now() / 1000;
-    setPingStates((prev) => ({
-      ...prev,
-      [pubkey]: { cooldown: 30, cooldownEndTime: now + 30, result: null },
-    }));
-
-    try {
-      const res = await fetch(`/api/ping/${encodeURIComponent(pubkey)}`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      setPingStates((prev) => ({
-        ...prev,
-        [pubkey]: { ...prev[pubkey], result: data.ok ? "ok" : "fail" },
-      }));
-    } catch (err) {
-      console.error(err);
-      setPingStates((prev) => ({
-        ...prev,
-        [pubkey]: { ...prev[pubkey], result: "fail" },
-      }));
-    }
-  };
-
-  const sendAdvert = async (pubkey, e) => {
-    e.stopPropagation();
-    setMenuOpen(null);
-    try {
-      await fetch(`/api/advert/${encodeURIComponent(pubkey)}`, {
-        method: "POST",
-      });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const setClock = async (pubkey, e) => {
-    e.stopPropagation();
-    setMenuOpen(null);
-    try {
-      await fetch(`/api/set_clock/${encodeURIComponent(pubkey)}`, {
-        method: "POST",
-      });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const togglePauseRepeater = async (pubkey, e) => {
-    e.stopPropagation();
-    try {
-      await fetch(`/api/repeater/${pubkey}/pause`, { method: "POST" });
-      await updateRepeaterData();
-    } catch (err) {
-      console.log(err);
-    }
   };
 
   if (loading)
@@ -184,16 +84,8 @@ export default function Dashboard() {
             dragOverItem={dragOverItem}
             handleSort={handleSort}
             setHistoryNode={setHistoryNode}
-            lastPolledMenuOpen={lastPolledMenuOpen}
-            setLastPolledMenuOpen={setLastPolledMenuOpen}
-            menuOpen={menuOpen}
-            setMenuOpen={setMenuOpen}
-            pingStates={pingStates}
-            pingRepeater={pingRepeater}
-            sendAdvert={sendAdvert}
-            setClock={setClock}
             setRemoteAdminNode={setRemoteAdminNode}
-            togglePauseRepeater={togglePauseRepeater}
+            updateRepeaterData={updateRepeaterData}
           />
         ))}
       </div>
