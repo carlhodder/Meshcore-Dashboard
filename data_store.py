@@ -553,6 +553,7 @@ class DataStore:
                     for k, v in kwargs.items():
                         if hasattr(r, k) and v is not None:
                             setattr(r, k, v)
+                            r.update_metric_ts(k, ts)
                             if (
                                 self._db_path
                                 and k in metrics_to_store
