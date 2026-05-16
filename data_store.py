@@ -23,6 +23,7 @@ from playhouse.migrate import SqliteMigrator, migrate
 from playhouse.shortcuts import model_to_dict
 from playhouse.sqliteq import SqliteQueueDatabase
 
+
 db = Proxy()
 
 
@@ -131,15 +132,25 @@ class AdvertNode(BaseDbModel):
         table_name = "advert_nodes"
 
 
+
+METRIC_EXPIRE_HOURS = 12
+METRIC_EXPIRE_INTERVALS = 4
 # Wrapper just to keep metric field name, label, and default status all in one location.
 # Having a metric_label enables logging of the value. Assumes everything isa float atm.
-def metric(field, metric_label=None, metric_default=None):
+def metric(field, metric_label=None, metric_default=None, metric_expires=False):
+    def is_expired(metric_ts):
+        return field.metric_expires > 0 and time.time() > metric_ts + field.metric_expires * METRIC_EXPIRE_INTERVALS * 60 * 60
+        
     field.metric_label = metric_label
     field.metric_default = metric_default
+    field.metric_expires = METRIC_EXPIRE_HOURS if metric_expires else 0
+    field.metric_has_expired = is_expired 
+
     return field
 
 
 class RepeaterState(BaseDbModel):
+    _expiry_times = {}
     # Fields / db backed current state.
     pubkey = TextField(primary_key=True)
     name = TextField(default="")
@@ -185,9 +196,9 @@ class RepeaterState(BaseDbModel):
     last_fw_poll = FloatField(null=False, default=0)
     last_login_timestamp = FloatField(null=False, default=0)
     temperature = metric(
-        FloatField(null=True, default=None), metric_label="Temperature"
+        FloatField(null=True, default=None), metric_label="Temperature", metric_expires=True
     )
-    humidity = metric(FloatField(null=True, default=None), metric_label="Humidity")
+    humidity = metric(FloatField(null=True, default=None), metric_label="Humidity", metric_expires=True)
 
     @classmethod
     def get_metric_labels_dict(cls) -> dict:
@@ -206,12 +217,79 @@ class RepeaterState(BaseDbModel):
             if getattr(field, "metric_default", False)
             and getattr(field, "metric_label", None) is not None
         ]
+    
+    # TODO: Come back and refactor / rearrange and replace this hack :)
+    def __setattr__(self, name, value):
+        super().__setattr__(name, value)
+        if name in self._meta.fields and self._expiry_times.get(self.pubkey, {}).get(name, False):
+            self._expiry_times[self.pubkey][name] = time.time()
 
+    def update_metric_ts(self, metric_name, ts=None):
+        for name, field in self._meta.fields.items():
+            if name == metric_name:
+                if hasattr(field, "metric_expires") and field.metric_expires:                
+                    self._expiry_times.setdefault(self.pubkey, {})[name] = time.time() if ts is None else ts
+                break
+    
     def to_dict(self) -> dict:
         d = model_to_dict(self)
         d["online"] = self.is_online
         d["pubkey_prefix"] = self.pubkey[:12] if self.pubkey else ""
+
+        # Clear out any expired metrics
+        for name, field in self._meta.fields.items():
+            if hasattr(field, "metric_has_expired") and field.metric_has_expired(self._expiry_times.get(self.pubkey, {}).get(name, 0)):
+                d[name] = None
+
         return d
+    
+    def init_metric_ts(self, db, cfg):
+        # Find metrics to get:
+        expiry_fields = []
+        for f_name, field in self._meta.fields.items():
+            if getattr(field, "metric_expires", False):
+                field.metric_expires = cfg.poll_interval_hours
+                expiry_fields.append(f_name)
+        try:
+            with db.connection_context():
+                subquery = (
+                    Measurement.select(
+                        Measurement.pubkey,
+                        Measurement.timestamp,
+                        Measurement.measurement_code,
+                        Measurement.measurement_value,
+                        fn.ROW_NUMBER()
+                        .over(
+                            partition_by=[Measurement.measurement_code],
+                            order_by=[Measurement.timestamp.desc()],
+                        )
+                        .alias("row_rank"),
+                    )
+                    .where((Measurement.pubkey == self.pubkey) & (Measurement.timestamp >= time.time() - cfg.poll_interval_hours * METRIC_EXPIRE_INTERVALS * 60 * 60) & (Measurement.measurement_code.in_(expiry_fields)))
+                    .alias("top_n_subq")
+                )
+                query = (
+                    Measurement.select(
+                        subquery.c.pubkey,
+                        subquery.c.timestamp,
+                        subquery.c.measurement_code,
+                        subquery.c.measurement_value,
+                    )
+                    .from_(subquery)
+                    .where(subquery.c.row_rank == 1)
+                )
+                
+                for m in query:
+                    self.update_metric_ts(m.measurement_code, m.timestamp)
+                    if m.measurement_code in expiry_fields:
+                        expiry_fields.remove(m.measurement_code)
+                
+                for expired in expiry_fields:
+                    self.update_metric_ts(expired, 0)
+
+        except Exception as e:
+            print(f"[DataStore] DB error init repeater metrics: {e}")
+
 
     @property
     def is_online(self) -> bool:
@@ -364,6 +442,8 @@ class DataStore:
                     )
 
     def init_repeaters(self):
+        import debugpy
+        debugpy.wait_for_client()
         """Register a repeater from config. Called at startup or config save."""
         # Register any initially configured repeaters
         with self._lock:
@@ -378,6 +458,8 @@ class DataStore:
                                 name=r.name, pubkey=r.pubkey
                             )
                             self._repeaters[r.pubkey].save(force_insert=True)
+                        else:
+                            self._repeaters[r.pubkey].init_metric_ts(db, self.cfg)
                     else:
                         # Update name if it changed in settings
                         self._repeaters[r.pubkey].name = r.name

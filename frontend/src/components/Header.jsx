@@ -29,7 +29,9 @@ export default function Header() {
       fetch("/api/connection")
         .then((res) => res.json())
         .then(setConn)
-        .catch(() => {});
+        .catch(() => {
+          setConn({...conn, connected: false});
+        });
     };
     pollConn();
     const interval = setInterval(pollConn, 5000);
