@@ -188,7 +188,7 @@ export default function Packets() {
     for (let i = 0; i < pathLen; i++) {
       const hp = 4 + i * pathChars;
       if (hp + 2 > raw.length) break;
-      const hopHex = raw.slice(hp, hp + pathChars).slice(0, nodeIdChars);
+      const hopHex = raw.slice(hp, hp + pathChars);
       const hopInfo = pathArr[i];
       const hopName =
         hopInfo && hopInfo.name !== hopInfo.id ? hopInfo.name : "";
@@ -483,7 +483,7 @@ export default function Packets() {
                                     : ""
                                 }
                               >
-                                {hop.id}
+                                {hop.id.slice(0, nodeIdChars)}
                               </span>
                             </span>
                           ))}
