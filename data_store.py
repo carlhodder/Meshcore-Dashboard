@@ -442,8 +442,6 @@ class DataStore:
                     )
 
     def init_repeaters(self):
-        import debugpy
-        debugpy.wait_for_client()
         """Register a repeater from config. Called at startup or config save."""
         # Register any initially configured repeaters
         with self._lock:
