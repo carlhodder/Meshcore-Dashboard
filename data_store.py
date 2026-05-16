@@ -137,13 +137,13 @@ METRIC_EXPIRE_HOURS = 12
 METRIC_EXPIRE_INTERVALS = 4
 # Wrapper just to keep metric field name, label, and default status all in one location.
 # Having a metric_label enables logging of the value. Assumes everything isa float atm.
-def metric(field, metric_label=None, metric_default=None, metric_expires=False):
+def metric(field, metric_label=None, metric_default=None, metric_expires=None):
     def is_expired(metric_ts):
-        return field.metric_expires > 0 and time.time() > metric_ts + field.metric_expires * METRIC_EXPIRE_INTERVALS * 60 * 60
+        return field.metric_expires is not None and time.time() > metric_ts + field.metric_expires * METRIC_EXPIRE_INTERVALS * 60 * 60
         
     field.metric_label = metric_label
     field.metric_default = metric_default
-    field.metric_expires = METRIC_EXPIRE_HOURS if metric_expires else 0
+    field.metric_expires = METRIC_EXPIRE_HOURS if metric_expires else None
     field.metric_has_expired = is_expired 
 
     return field
@@ -227,7 +227,7 @@ class RepeaterState(BaseDbModel):
     def update_metric_ts(self, metric_name, ts=None):
         for name, field in self._meta.fields.items():
             if name == metric_name:
-                if hasattr(field, "metric_expires") and field.metric_expires:                
+                if hasattr(field, "metric_expires") and field.metric_expires is not None:                
                     self._expiry_times.setdefault(self.pubkey, {})[name] = time.time() if ts is None else ts
                 break
     
@@ -247,7 +247,7 @@ class RepeaterState(BaseDbModel):
         # Find metrics to get:
         expiry_fields = []
         for f_name, field in self._meta.fields.items():
-            if getattr(field, "metric_expires", False):
+            if hasattr(field, "metric_expires") and getattr(field, "metric_expires") is not None:
                 field.metric_expires = cfg.poll_interval_hours
                 expiry_fields.append(f_name)
         try:
