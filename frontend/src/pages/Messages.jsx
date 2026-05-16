@@ -118,11 +118,6 @@ export default function Messages() {
     prevMsgCountRef.current = messages.length;
   }, [messages]);
 
-  const lookupContact = (pubkeyPrefix) => {
-    if (!pubkeyPrefix) return null;
-    return findByKey(contactRoutes, pubkeyPrefix);
-  };
-
   const handleReplyClick = (pubkey, name, chIdx) => {
     if (!pubkey) {
       if (chIdx !== null && chIdx !== undefined) {
@@ -266,7 +261,7 @@ export default function Messages() {
             let hops = m.hops !== undefined && m.hops >= 0 ? m.hops : null;
             let routePath = m.path || "";
             if (!isOut && m.sender_pubkey && (hops === null || !routePath)) {
-              const contact = lookupContact(m.sender_pubkey);
+              const contact = findByKey(contactRoutes, m.sender_pubkey);
               if (contact) {
                 if (hops === null) hops = contact.hops;
                 if (!routePath) routePath = contact.route_path || "";

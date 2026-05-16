@@ -467,7 +467,10 @@ class MeshcorePoller:
             self.__try_get_and_update_timestamp(sender_pubkey, payload)
 
             sender_name = self._resolve_contact_name(sender_pubkey)
-            hops, path = self._extract_hops_path(payload)
+            hops, path = self._extract_hops_path(payload.get("path_len"), payload.get("path", ""))
+            if hops >= 0 and path is not None:
+                self.add_to_contact_routes(sender_pubkey, hops, path, reverse=True)
+
             if hops > 0 and not path and sender_pubkey:
                 stored_hops, stored_path = self.store.get_route_by_prefix(sender_pubkey)
                 if stored_path and stored_hops == hops:
@@ -524,7 +527,7 @@ class MeshcorePoller:
                 f"Ch{channel_idx}",
             )
 
-            hops, path = self._extract_hops_path(payload)
+            hops, path = self._extract_hops_path(payload.get("path_len"), payload.get("path", ""))
             if text:
                 is_new = self.store.store_message(
                     "in",
@@ -660,11 +663,16 @@ class MeshcorePoller:
             logger.debug(f"Error handling PATH_RESPONSE event: {e}")
 
     def add_to_contact_routes(
-        self, pubkey_prefix, hops, processed_route, increment=True
+        self, pubkey_prefix, hops, processed_route, increment=True, reverse=False
     ):
         if hops < 0 or (hops > 1 and not processed_route):
             # Bad data, don't store.
             return
+        
+        # Store everything from companion POV, so for getting paths from remote packets we'll want to 
+        # request that be reversed.
+        if reverse:
+            processed_route = " > ".join(reversed([p.strip() for p in processed_route.split(">")]))
 
         node_key = pubkey_prefix[:12].lower()
         # Create or increment hop, route counter
@@ -708,7 +716,8 @@ class MeshcorePoller:
         all_routes = {}
         for pubkey, routes_dict in self._contact_routes.items():
             hops, route = next(iter(routes_dict.keys()))
-            all_routes[pubkey] = {"hops": hops, "path": route}
+            display_routes = " > ".join([p.strip()[: self._cfg.node_id_chars] for p in route.split(">")])
+            all_routes[pubkey] = {"hops": hops, "path": display_routes}
         return all_routes
 
     # Payload type codes extracted from header byte bits 2-5: (header >> 2) & 0x0F
@@ -840,7 +849,7 @@ class MeshcorePoller:
                         # Use the decoded RF path as a route update for this node
                         if pubkey_hex and path_len >= 0:
                             route_str = " > ".join(h["id"] for h in decoded_path)
-                            self.add_to_contact_routes(pubkey_hex, hops, route_str)
+                            self.add_to_contact_routes(pubkey_hex, hops, route_str, reverse=True)
                             logger.debug(
                                 f"[advert path] {name_str or pubkey_hex[:8]}: hops={hops}, path={'flood' if hops == -1 else route_str or 'direct'}"
                             )
@@ -1182,7 +1191,6 @@ class MeshcorePoller:
     async def _poll_repeater(self, contact, repeater_cfg, manual=False):
         if repeater_cfg.paused:
             return
-
         pubkey = repeater_cfg.pubkey
         name = repeater_cfg.name
         rep_state = self.store.get(pubkey)
@@ -1687,7 +1695,7 @@ class MeshcorePoller:
             result = await self._sync_request_remote_cmd(
                 pubkey, cmd, validator, contact, timeout=10
             )
-            if cmd.lower().trim() in [
+            if cmd.lower().strip() in [
                 "reboot",
                 "clkreboot",
                 "poweroff",
