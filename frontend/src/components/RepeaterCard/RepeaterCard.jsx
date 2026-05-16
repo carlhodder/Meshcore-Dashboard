@@ -3,6 +3,7 @@ import styles from "./RepeaterCard.module.css";
 import RepeaterCardHeader from "./header/RepeaterCardHeader";
 import RepeaterCardFooter from "./footer/RepeaterCardFooter";
 import RepeaterCardMetric from "./metric_tile/RepeaterCardMetric";
+import { findByKey } from "../../utils/keyUtils";
 
 function formatUptime(seconds) {
   if (!seconds || seconds <= 0) return "--";
@@ -86,7 +87,9 @@ function buildRouteChain(r, prefixToName) {
   if (r.route_path) {
     const segs = r.route_path.replace(/\s/g, "").split(">");
     segs.forEach((seg) => {
-      chain.push(prefixToName[seg] || seg);
+      // prefixToName is a plain string→string map (prefix → name), use findByKey for prefix-agnostic lookup
+      const name = findByKey(prefixToName, seg);
+      chain.push(name || seg);
     });
   } else if (r.hops > 0) {
     for (let i = 0; i < r.hops; i++) chain.push("?");

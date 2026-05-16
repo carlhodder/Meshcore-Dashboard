@@ -36,10 +36,12 @@ poller = MeshcorePoller(store, cfg)
 _log_handler = store.get_log_handler()
 logging.getLogger().addHandler(_log_handler)
 
+
 # Close db on exit
 @atexit.register
 def shutdown():
     store.close_db()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -159,12 +161,12 @@ async def get_map_data():
     home = {"lat": None, "lon": None, "name": "Gateway"}
     if poller and poller.mc and hasattr(poller.mc, "self_info") and poller.mc.self_info:
         si = poller.mc.self_info
-        home["lat"] = si.get("adv_lat", None) 
+        home["lat"] = si.get("adv_lat", None)
         home["lon"] = si.get("adv_lon", None)
     # Fall back to manually saved home location if device has no GPS
     if not home["lat"] and not home["lon"]:
         home["lat"] = cfg.home_lat
-        home["lon"] = cfg.home_lon 
+        home["lon"] = cfg.home_lon
 
     # Include all mesh contacts for neighbour discovery on the map
     mesh_contacts = []
@@ -173,17 +175,20 @@ async def get_map_data():
             mesh_contacts = poller.get_mesh_contacts()
         except Exception as e:
             pass
-    configured_pubkeys = {r["pubkey"] for r in repeaters}
+    configured_pubkeys = {r["pubkey"].lower() for r in repeaters}
     for c in mesh_contacts:
-        c["configured"] = any(k.lower().startswith(c["pubkey_prefix"].lower()) for k in configured_pubkeys)
+        # c["pubkey_prefix"] is the 12-char prefix; match if any configured repeater starts with it
+        cpk = c["pubkey_prefix"].lower()
+        c["configured"] = any(
+            pk.startswith(cpk) or cpk.startswith(pk) for pk in configured_pubkeys
+        )
 
     # Advert-discovered nodes heard via RF (may include foreign repeaters)
     advert_nodes = store.get_advert_nodes()
     # Tag each as configured if pubkey matches a dashboard repeater
     for n in advert_nodes:
         n["configured"] = any(
-            n["pubkey"] == pk
-            or pk.lower().startswith(n["pubkey"].lower())
+            n["pubkey"] == pk or pk.lower().startswith(n["pubkey"].lower())
             for pk in configured_pubkeys
         )
 
@@ -208,7 +213,6 @@ async def set_home_location(request: Request):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-    
     return {"ok": True}
 
 
@@ -288,7 +292,7 @@ async def toggle_polling():
         logger.info(f"Polling {"enabled" if cfg.polling_enabled else "disabled"}")
     except Exception as e:
         return {"ok": False, "error": str(e)}
-    
+
     return {"ok": True, "polling_enabled": cfg.polling_enabled}
 
 
@@ -548,17 +552,17 @@ async def apply_update(file: UploadFile = File(...)):
 async def cli_login(pubkey: str):
     if pubkey is None:
         return {"ok": False, "error": "pubkey key missing"}
-    
+
     return await poller.cli_login(pubkey)
 
 
 @app.post("/api/cli_cmd/{pubkey}")
 async def cli_cmd(pubkey: str, request: Request):
     body = await request.json()
-    cmd  = body.get("cmd", None)
+    cmd = body.get("cmd", None)
     if pubkey is None or cmd is None:
         return {"ok": False, "error": "pubkey or cmd keys missing"}
-    
+
     return await poller.cli_cmd(pubkey, cmd)
 
 

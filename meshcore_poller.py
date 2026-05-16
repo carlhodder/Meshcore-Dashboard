@@ -67,8 +67,9 @@ class MeshcorePoller:
     def _get_cached_node_name(self, node_id):
         # If we get a request with an id smaller than 12 we return the first match.
         # This is for supporting pathing on smaller packet hops (e.g 2 char)
+        node_id_lower = node_id[:12].lower()
         for k, name in self._node_id_name_cache.items():
-            if k.starts_wtih(node_id[:12].lower()):
+            if k.startswith(node_id_lower) or node_id_lower.startswith(k):
                 return name
         return None
 
@@ -658,7 +659,9 @@ class MeshcorePoller:
         except Exception as e:
             logger.debug(f"Error handling PATH_RESPONSE event: {e}")
 
-    def add_to_contact_routes(self, pubkey_prefix, hops, processed_route, increment=True):
+    def add_to_contact_routes(
+        self, pubkey_prefix, hops, processed_route, increment=True
+    ):
         if hops < 0 or (hops > 1 and not processed_route):
             # Bad data, don't store.
             return
@@ -670,7 +673,7 @@ class MeshcorePoller:
             self._contact_routes[node_key][(hops, processed_route)] = 1
         elif increment:
             self._contact_routes[node_key][(hops, processed_route)] += 1
-        
+
         # Now only keep top 5 routes by frequency, and keep
         self._contact_routes[node_key] = dict(
             sorted(
@@ -705,7 +708,7 @@ class MeshcorePoller:
         all_routes = {}
         for pubkey, routes_dict in self._contact_routes.items():
             hops, route = next(iter(routes_dict.keys()))
-            all_routes[pubkey] = {"hops": hops, "route": route}
+            all_routes[pubkey] = {"hops": hops, "path": route}
         return all_routes
 
     # Payload type codes extracted from header byte bits 2-5: (header >> 2) & 0x0F
@@ -990,10 +993,10 @@ class MeshcorePoller:
     def _resolve_contact_name(self, pubkey_prefix: str) -> str:
         if not pubkey_prefix:
             return "Unknown"
+        p = pubkey_prefix[:12].lower()
         for key, contact in self._contacts.items():
-            if key.lower() == pubkey_prefix[:12].lower() or key.starts_with(
-                pubkey_prefix
-            ):
+            kl = key.lower()
+            if kl == p or kl.startswith(p) or p.startswith(kl):
                 return contact.get("name") or pubkey_prefix[:12]
         return pubkey_prefix[:12]
 
@@ -1074,7 +1077,7 @@ class MeshcorePoller:
                 )
                 if hops >= 0:
                     self.add_to_contact_routes(key, hops, route_path)
-                
+
                 if key and name and len(key) >= 12:
                     self._cache_node_name(key, name)
 
@@ -1107,7 +1110,7 @@ class MeshcorePoller:
             # Fall back to contact route cache from PATH_RESPONSE events
             if route_path is None:
                 hops, route_path = self.get_cached_contact_route(pk)
-                
+
             # Try several possible name fields the meshcore SDK may use
             name = (
                 contact.get("name")
@@ -1127,7 +1130,8 @@ class MeshcorePoller:
                     last_seen = None
             result.append(
                 {
-                    "pubkey_prefix": pk[: self._cfg.node_id_chars],
+                    "pubkey_prefix": pk[:12],
+                    "pubkey_short": pk[: self._cfg.node_id_chars],
                     "name": name,
                     "lat": lat,
                     "lon": lon,
@@ -1299,7 +1303,7 @@ class MeshcorePoller:
                 logger.debug(f"[{name}] Path discovery timed out")
                 return -1, None
             payload = response.payload
-            new_hops, disc_route = self.hops(
+            new_hops, disc_route = self._extract_hops_path(
                 payload.get("out_path_len"), payload.get("out_path")
             )
             if new_hops >= 0 and disc_route is not None:

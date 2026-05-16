@@ -66,9 +66,18 @@ export default function Dashboard() {
       </div>
     );
 
+  // Build prefix→name map at all supported lengths for backwards-compat key matching
+  // Values are plain strings (names) so findByKey in RepeaterCard returns the name directly
   const prefixToName = {};
   repeaters.forEach((rep) => {
-    if (rep.pubkey) prefixToName[rep.pubkey.substring(0, 2)] = rep.name;
+    if (rep.pubkey) {
+      for (const len of [2, 4, 6, 12]) {
+        if (len <= rep.pubkey.length) {
+          const prefix = rep.pubkey.substring(0, len).toLowerCase();
+          if (!prefixToName[prefix]) prefixToName[prefix] = rep.name;
+        }
+      }
+    }
   });
 
   return (

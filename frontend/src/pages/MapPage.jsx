@@ -6,6 +6,17 @@ import {
   useLayoutEffect,
 } from "preact/hooks";
 import styles from "./MapPage.module.css";
+import { findByKey, buildPrefixMap, keysMatch } from "../utils/keyUtils";
+import {
+  markerColor,
+  haversineKm,
+  addPathToSegments,
+  pathInvolvesRepeater,
+  applyLinkAnim,
+  perpOffset,
+} from "../utils/mapUtils";
+import MapLegend from "../components/map/MapLegend";
+import MapControls from "../components/map/MapControls";
 
 const NODE_PALETTE = [
   "#f59e0b",
@@ -19,91 +30,6 @@ const NODE_PALETTE = [
   "#fb923c",
   "#60a5fa",
 ];
-
-function markerColor(r) {
-  if (r.last_poll_ok === true) return "#4ade80";
-  if (r.last_poll_ok === false) return "#f87171";
-  const recentSec = 3600;
-  if (r.last_seen_epoch && Date.now() / 1000 - r.last_seen_epoch < recentSec)
-    return "#4ade80";
-  return "#64748b";
-}
-
-function haversineKm(a, b) {
-  var R = 6371;
-  var dLat = ((b[0] - a[0]) * Math.PI) / 180;
-  var dLon = ((b[1] - a[1]) * Math.PI) / 180;
-  var sinLat = Math.sin(dLat / 2),
-    sinLon = Math.sin(dLon / 2);
-  var h =
-    sinLat * sinLat +
-    Math.cos((a[0] * Math.PI) / 180) *
-      Math.cos((b[0] * Math.PI) / 180) *
-      sinLon *
-      sinLon;
-  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-}
-
-function addPathToSegments(
-  latlngs,
-  label,
-  segCounts,
-  segLatLng,
-  segLabels,
-  mapPathMaxKm,
-) {
-  if (latlngs.length < 2) return;
-  for (var i = 0; i < latlngs.length - 1; i++) {
-    var a = latlngs[i],
-      b = latlngs[i + 1];
-    if (haversineKm(a, b) > mapPathMaxKm) continue;
-    var ka = a[0] + "," + a[1],
-      kb = b[0] + "," + b[1];
-    var key = ka < kb ? ka + "|" + kb : kb + "|" + ka;
-    if (!segCounts[key]) {
-      segCounts[key] = 0;
-      segLatLng[key] = [a, b];
-      segLabels[key] = [];
-    }
-    segCounts[key]++;
-    if (segLabels[key].indexOf(label) === -1) segLabels[key].push(label);
-  }
-}
-
-function pathInvolvesRepeater(destPubkey, routePath, filterPk) {
-  var fp = filterPk.substring(0, 2).toLowerCase();
-  if (destPubkey && destPubkey.substring(0, 2).toLowerCase() === fp)
-    return true;
-  if (routePath) {
-    var segs = routePath.replace(/\s/g, "").split(">");
-    for (var i = 0; i < segs.length; i++) {
-      if (segs[i].toLowerCase() === fp) return true;
-    }
-  }
-  return false;
-}
-
-function applyLinkAnim(line) {
-  var el = line.getElement ? line.getElement() : null;
-  if (el) el.style.animation = "dash-flow 180s linear infinite";
-}
-
-function perpOffset(pts, offsetDeg) {
-  var lat1 = pts[0][0],
-    lon1 = pts[0][1],
-    lat2 = pts[1][0],
-    lon2 = pts[1][1];
-  var dlat = lat2 - lat1;
-  var cosLat = Math.cos((((lat1 + lat2) / 2) * Math.PI) / 180);
-  var dlon = (lon2 - lon1) * cosLat;
-  var len = Math.sqrt(dlat * dlat + dlon * dlon) || 1;
-  var ox = (-dlon / len) * offsetDeg;
-  var oy = ((dlat / len) * offsetDeg) / cosLat;
-  return [
-    [lat1 + ox, lon1 + oy],
-    [lat2 + ox, lon2 + oy],
-  ];
-}
 
 export default function MapPage() {
   const mapContainerRef = useRef(null);
@@ -131,12 +57,10 @@ export default function MapPage() {
   const allNodeLatLngRef = useRef({});
 
   const mapPathMaxKmRef = useRef(300);
-  const nodeIdCharsRef = useRef(2);
   const highlightedRepeaterRef = useRef(null);
   const pathsStateBeforeHighlightRef = useRef(false);
 
   const contactsLayerRef = useRef(null);
-  const advertLayerRef = useRef(null);
   const pathsLayerRef = useRef(null);
   const msgPathsLayerRef = useRef(null);
   const neighbourLinksLayerRef = useRef(null);
@@ -186,11 +110,7 @@ export default function MapPage() {
                 .replace(/\s/g, "")
                 .split(">")
                 .forEach((seg) => {
-                  var node =
-                    allNodeLatLngRef.current[
-                      seg.substring(0, nodeIdCharsRef.current).toLowerCase()
-                    ] ||
-                    allNodeLatLngRef.current[seg.substring(0, 2).toLowerCase()];
+                  var node = findByKey(allNodeLatLngRef.current, seg);
                   if (node) latlngs.push([node.lat, node.lon]);
                 });
             }
@@ -209,11 +129,9 @@ export default function MapPage() {
 
         Object.keys(routes).forEach((prefix) => {
           var entry = routes[prefix];
-          var preN = prefix.substring(0, nodeIdCharsRef.current).toLowerCase();
           var pre2 = prefix.substring(0, 2).toLowerCase();
           if (myPrefixes[pre2]) return;
-          var dest =
-            allNodeLatLngRef.current[preN] || allNodeLatLngRef.current[pre2];
+          var dest = findByKey(allNodeLatLngRef.current, prefix);
           if (!dest) return;
           if (
             filterPk &&
@@ -230,11 +148,7 @@ export default function MapPage() {
               .replace(/\s/g, "")
               .split(">")
               .forEach((seg) => {
-                var node =
-                  allNodeLatLngRef.current[
-                    seg.substring(0, nodeIdCharsRef.current).toLowerCase()
-                  ] ||
-                  allNodeLatLngRef.current[seg.substring(0, 2).toLowerCase()];
+                var node = findByKey(allNodeLatLngRef.current, seg);
                 if (node) latlngs.push([node.lat, node.lon]);
               });
           }
@@ -290,11 +204,10 @@ export default function MapPage() {
 
         msgs.forEach((m) => {
           var pre2 = (m.sender_pubkey || "").substring(0, 2).toLowerCase();
-          var preN = (m.sender_pubkey || "")
-            .substring(0, nodeIdCharsRef.current)
-            .toLowerCase();
-          var sender =
-            allNodeLatLngRef.current[preN] || allNodeLatLngRef.current[pre2];
+          var sender = findByKey(
+            allNodeLatLngRef.current,
+            m.sender_pubkey || "",
+          );
           if (!sender) return;
 
           var latlngs = [[sender.lat, sender.lon]];
@@ -303,11 +216,7 @@ export default function MapPage() {
               .replace(/\s/g, "")
               .split(">")
               .forEach((seg) => {
-                var node =
-                  allNodeLatLngRef.current[
-                    seg.substring(0, nodeIdCharsRef.current).toLowerCase()
-                  ] ||
-                  allNodeLatLngRef.current[seg.substring(0, 2).toLowerCase()];
+                var node = findByKey(allNodeLatLngRef.current, seg);
                 if (node) latlngs.push([node.lat, node.lon]);
               });
           }
@@ -368,8 +277,10 @@ export default function MapPage() {
       if (c.configured) return;
       if (!c.lat || !c.lon) return;
       var latlng = [c.lat, c.lon];
-      var prefix2 = c.pubkey ? c.pubkey.substring(0, 2).toLowerCase() : "";
-      var isKnown = !!(prefix2 && mapNodeNamesRef.current[prefix2]);
+      // contacts use pubkey_prefix (12-char)
+      var cpk = c.pubkey_prefix || c.pubkey || "";
+      // mapNodeNamesRef is keyed by 12-char prefix; use findByKey for prefix-agnostic lookup
+      var isKnown = !!(cpk && findByKey(mapNodeNamesRef.current, cpk));
 
       var ringColor = "#22d3ee";
       var fillColor = "#0c4a6e";
@@ -394,7 +305,7 @@ export default function MapPage() {
       var routeStr = c.route_path || "";
       var popupContent =
         '<div class="popup-name">' +
-        (c.name || c.pubkey.substring(0, 8)) +
+        (c.name || cpk.substring(0, 8)) +
         "</div>" +
         '<div class="popup-row"><span class="popup-label">Last heard</span><span class="popup-val">' +
         lastHeardStr +
@@ -408,7 +319,7 @@ export default function MapPage() {
             "</span></div>"
           : "") +
         '<div class="popup-row"><span class="popup-label">ID</span><span class="popup-val" style="font-family:monospace;font-size:0.72rem">' +
-        c.pubkey.substring(0, 12) +
+        cpk.substring(0, 12) +
         "…</span></div>" +
         (isKnown
           ? '<div style="color:#22d3ee;font-size:0.7rem;margin-top:0.2rem">★ Known node</div>'
@@ -442,10 +353,10 @@ export default function MapPage() {
                 setNeighbourRenderTrigger((prev) => prev + 1);
               }
             };
-          })(c.pubkey),
+          })(cpk),
         );
 
-      cm.bindTooltip(c.name || c.pubkey.substring(0, 8), {
+      cm.bindTooltip(c.name || cpk.substring(0, 8), {
         permanent: true,
         direction: "top",
         className: "map-label",
@@ -482,11 +393,13 @@ export default function MapPage() {
               };
           });
           (mapData.contacts || []).forEach((c) => {
-            if (c.pubkey && c.lat && c.lon)
-              fullPkLookup[c.pubkey.toLowerCase()] = {
+            // contacts use pubkey_prefix (12-char)
+            var cpk = (c.pubkey_prefix || c.pubkey || "").toLowerCase();
+            if (cpk && c.lat && c.lon)
+              fullPkLookup[cpk] = {
                 lat: c.lat,
                 lon: c.lon,
-                name: c.name || c.pubkey.substring(0, 8),
+                name: c.name || cpk.substring(0, 8),
               };
           });
           (mapData.advert_nodes || []).forEach((n) => {
@@ -503,13 +416,8 @@ export default function MapPage() {
           if (!pk) return null;
           var pkLower = pk.toLowerCase();
           if (fullPkLookup[pkLower]) return fullPkLookup[pkLower];
-          var keys = Object.keys(fullPkLookup);
-          for (var i = 0; i < keys.length; i++) {
-            if (keys[i].startsWith(pkLower) || pkLower.startsWith(keys[i])) {
-              return fullPkLookup[keys[i]];
-            }
-          }
-          return null;
+          // Prefix-match: either key is a prefix of the other, prefer longest match
+          return findByKey(fullPkLookup, pkLower);
         }
 
         var pairs = {};
@@ -517,61 +425,44 @@ export default function MapPage() {
         var filterPk = highlightedRepeaterRef.current;
 
         neighbours.forEach((nb) => {
+          // Filter: skip if neither endpoint matches the highlighted repeater
           if (filterPk) {
-            var fp = filterPk.toLowerCase();
-            var p1 = nb.pubkey.toLowerCase();
-            var p2 = nb.pubkey_remote.toLowerCase();
             if (
-              !p1.startsWith(fp) &&
-              !fp.startsWith(p1) &&
-              !p2.startsWith(fp) &&
-              !fp.startsWith(p2)
-            ) {
+              !keysMatch(nb.pubkey, filterPk) &&
+              !keysMatch(nb.pubkey_remote, filterPk)
+            )
               return;
-            }
           }
 
           var listenerNode = resolveNode(nb.pubkey);
           var transmitterNode = resolveNode(nb.pubkey_remote);
           if (!listenerNode || !transmitterNode) return;
 
-          var pkListenerShort = nb.pubkey.toLowerCase().substring(0, 8);
-          var pkTransmitterShort = nb.pubkey_remote
-            .toLowerCase()
-            .substring(0, 8);
-          var pkA =
-            pkListenerShort < pkTransmitterShort
-              ? pkListenerShort
-              : pkTransmitterShort;
-          var pkB =
-            pkListenerShort < pkTransmitterShort
-              ? pkTransmitterShort
-              : pkListenerShort;
-          var pairKey = pkA + "||" + pkB;
+          // Use the full pubkeys as pair keys (they're already 12-char prefixes from the API)
+          var pkA = nb.pubkey < nb.pubkey_remote ? nb.pubkey : nb.pubkey_remote;
+          var pkB = nb.pubkey < nb.pubkey_remote ? nb.pubkey_remote : nb.pubkey;
+          var pairKey = pkA.toLowerCase() + "||" + pkB.toLowerCase();
 
           if (!pairs[pairKey]) {
-            var nodeA =
-              pkListenerShort < pkTransmitterShort
-                ? listenerNode
-                : transmitterNode;
-            var nodeB =
-              pkListenerShort < pkTransmitterShort
-                ? transmitterNode
-                : listenerNode;
             pairs[pairKey] = {
-              nodeA: nodeA,
-              nodeB: nodeB,
-              pkA: pkA,
-              pkB: pkB,
-              snrListener_pkA: null,
-              snrListener_pkB: null,
+              nodeA:
+                nb.pubkey < nb.pubkey_remote ? listenerNode : transmitterNode,
+              nodeB:
+                nb.pubkey < nb.pubkey_remote ? transmitterNode : listenerNode,
+              nameA:
+                nb.pubkey < nb.pubkey_remote ? nb.pubkey : nb.pubkey_remote,
+              nameB:
+                nb.pubkey < nb.pubkey_remote ? nb.pubkey_remote : nb.pubkey,
+              snrA: null, // SNR as heard by nodeA (i.e. nodeB transmitted)
+              snrB: null, // SNR as heard by nodeB (i.e. nodeA transmitted)
             };
           }
 
-          if (pkListenerShort === pkA) {
-            pairs[pairKey].snrListener_pkA = nb.snr;
+          // nb.pubkey is the listener, nb.pubkey_remote is the transmitter
+          if (nb.pubkey === pkA) {
+            pairs[pairKey].snrA = nb.snr; // pkA heard pkB
           } else {
-            pairs[pairKey].snrListener_pkB = nb.snr;
+            pairs[pairKey].snrB = nb.snr; // pkB heard pkA
           }
         });
 
@@ -579,27 +470,19 @@ export default function MapPage() {
           var p = pairs[key];
           var ptA = [p.nodeA.lat, p.nodeA.lon];
           var ptB = [p.nodeB.lat, p.nodeB.lon];
-          var nameA = p.nodeA.name || p.pkA;
-          var nameB = p.nodeB.name || p.pkB;
+          var nameA = p.nodeA.name || p.nameA;
+          var nameB = p.nodeB.name || p.nameB;
 
           var lines = [];
-          if (p.snrListener_pkA !== null)
+          // snrA = SNR as heard by nodeA (nodeB transmitted → nameB → nameA)
+          if (p.snrA !== null)
             lines.push(
-              nameB +
-                " \u2192 " +
-                nameA +
-                ": " +
-                p.snrListener_pkA.toFixed(1) +
-                " dB",
+              nameB + " \u2192 " + nameA + ": " + p.snrA.toFixed(1) + " dB",
             );
-          if (p.snrListener_pkB !== null)
+          // snrB = SNR as heard by nodeB (nodeA transmitted → nameA → nameB)
+          if (p.snrB !== null)
             lines.push(
-              nameA +
-                " \u2192 " +
-                nameB +
-                ": " +
-                p.snrListener_pkB.toFixed(1) +
-                " dB",
+              nameA + " \u2192 " + nameB + ": " + p.snrB.toFixed(1) + " dB",
             );
           var labelHtml = lines.join("<br>");
 
@@ -638,25 +521,30 @@ export default function MapPage() {
       };
     }
     function indexNode(pubkey, lat, lon, name) {
-      var p2 = pubkey.substring(0, 2).toLowerCase();
-      var pN = pubkey.substring(0, nodeIdCharsRef.current).toLowerCase();
-      var entry = { lat: lat, lon: lon, name: name || p2 };
-      newLatLng[p2] = entry;
-      if (pN !== p2) newLatLng[pN] = entry;
+      var pl = pubkey.toLowerCase();
+      var entry = { lat: lat, lon: lon, name: name || pl.substring(0, 2) };
+      // Index at all supported prefix lengths so findByKey works regardless of node_id_chars
+      for (var len of [2, 4, 6, 12]) {
+        if (len <= pl.length) newLatLng[pl.substring(0, len)] = entry;
+      }
+      if (pl.length > 12) newLatLng[pl] = entry;
     }
+    // Repeaters take priority — index first so contacts/adverts don't overwrite them
     (data.repeaters || []).forEach((r) => {
       if (!r.lat || !r.lon || !r.pubkey) return;
       indexNode(r.pubkey, r.lat, r.lon, r.name);
     });
+    // Contacts: only index if no repeater already occupies that 2-char prefix
     (data.contacts || []).forEach((c) => {
-      if (!c.lat || !c.lon || !c.pubkey) return;
-      var p2 = c.pubkey.substring(0, 2).toLowerCase();
-      if (!newLatLng[p2]) indexNode(c.pubkey, c.lat, c.lon, c.name);
+      var pk = c.pubkey_prefix || c.pubkey;
+      if (!c.lat || !c.lon || !pk) return;
+      if (!findByKey(newLatLng, pk)) indexNode(pk, c.lat, c.lon, c.name);
     });
+    // Advert nodes: same priority — don't overwrite repeaters or contacts
     (data.advert_nodes || []).forEach((n) => {
       if (!n.lat || !n.lon || !n.pubkey) return;
-      var p2 = n.pubkey.substring(0, 2).toLowerCase();
-      if (!newLatLng[p2]) indexNode(n.pubkey, n.lat, n.lon, n.name);
+      if (!findByKey(newLatLng, n.pubkey))
+        indexNode(n.pubkey, n.lat, n.lon, n.name);
     });
     allNodeLatLngRef.current = newLatLng;
   }, []);
@@ -668,27 +556,20 @@ export default function MapPage() {
       const repeaters = data.repeaters || [];
       const bounds = [];
 
-      pubkeyMapRef.current = {};
+      // Build prefix maps for repeaters and non-configured contacts using buildPrefixMap
+      // so findByKey works at any node_id_chars length.
       repeaters.forEach((r, idx) => {
-        if (r.pubkey && r.pubkey.length >= 2)
-          pubkeyMapRef.current[r.pubkey.substring(0, 2).toLowerCase()] = r;
-        if (r.pubkey && r.pubkey.length >= 4)
-          pubkeyMapRef.current[r.pubkey.substring(0, 4).toLowerCase()] = r;
         if (!nodeColorsRef.current[r.pubkey])
           nodeColorsRef.current[r.pubkey] =
             NODE_PALETTE[idx % NODE_PALETTE.length];
       });
+      pubkeyMapRef.current = buildPrefixMap(repeaters, "pubkey");
 
       allContactsDataRef.current = data.contacts || [];
-
-      contactMapRef.current = {};
-      allContactsDataRef.current.forEach((c) => {
-        if (c.configured) return;
-        if (!c.pubkey || c.pubkey.length < 2) return;
-        contactMapRef.current[c.pubkey.substring(0, 2).toLowerCase()] = c;
-        if (c.pubkey.length >= 4)
-          contactMapRef.current[c.pubkey.substring(0, 4).toLowerCase()] = c;
-      });
+      const unconfiguredContacts = allContactsDataRef.current
+        .filter((c) => !c.configured)
+        .map((c) => ({ ...c, pubkey: c.pubkey_prefix || c.pubkey }));
+      contactMapRef.current = buildPrefixMap(unconfiguredContacts, "pubkey");
 
       if (home.lat && home.lon) {
         const homeLatLng = [home.lat, home.lon];
@@ -804,7 +685,7 @@ export default function MapPage() {
         if (r.route_path && r.hops > 0) {
           var segments = r.route_path.replace(/\s/g, "").split(">");
           segments.forEach((seg) => {
-            var intermediate = pubkeyMapRef.current[seg.toLowerCase()];
+            var intermediate = findByKey(pubkeyMapRef.current, seg);
             if (intermediate && intermediate.pubkey !== r.pubkey) {
               chain.push(intermediate.pubkey);
             }
@@ -915,7 +796,6 @@ export default function MapPage() {
       ).addTo(mapRef.current);
 
       contactsLayerRef.current = window.L.layerGroup().addTo(mapRef.current);
-      advertLayerRef.current = window.L.layerGroup().addTo(mapRef.current);
       pathsLayerRef.current = window.L.layerGroup().addTo(mapRef.current);
       msgPathsLayerRef.current = window.L.layerGroup().addTo(mapRef.current);
       neighbourLinksLayerRef.current = window.L.layerGroup().addTo(
@@ -961,7 +841,6 @@ export default function MapPage() {
       .then((r) => r.json())
       .then((s) => {
         if (s.map_path_max_km) mapPathMaxKmRef.current = s.map_path_max_km;
-        if (s.node_id_chars) nodeIdCharsRef.current = s.node_id_chars;
       })
       .catch(() => {})
       .finally(() => {
@@ -1024,133 +903,30 @@ export default function MapPage() {
           className={`${styles.leafletMap} ${pickingHome ? "map-picking" : ""}`}
         ></div>
 
-        <div className={styles.mapLegend}>
-          <div
-            className={styles.legendHeader}
-            onClick={() => setLegendOpen((p) => !p)}
-          >
-            <span>Legend</span>
-            <span className={styles.legendToggle}>
-              {legendOpen ? "▼" : "▲"}
-            </span>
-          </div>
-          {legendOpen && (
-            <div className={styles.legendContent}>
-              <div className={styles.legendRow}>
-                <div className={`${styles.legendDot} ${styles.gateway}`}></div>{" "}
-                Gateway
-              </div>
-              <div className={`${styles.legendRow} ${styles.legendSubtitle}`}>
-                Node fill = status
-              </div>
-              <div className={styles.legendRow}>
-                <div className={`${styles.legendDot} ${styles.online}`}></div>{" "}
-                Online
-              </div>
-              <div className={styles.legendRow}>
-                <div className={`${styles.legendDot} ${styles.offline}`}></div>{" "}
-                Offline
-              </div>
-              <div className={styles.legendRow}>
-                <div className={`${styles.legendDot} ${styles.unknown}`}></div>{" "}
-                Not polled
-              </div>
-              <div className={`${styles.legendRow} ${styles.legendSubtitle}`}>
-                Contacts (All mode)
-              </div>
-              <div className={styles.legendRow}>
-                <div
-                  className={`${styles.legendDot} ${styles.dotContact}`}
-                ></div>{" "}
-                Contact
-              </div>
-              <div className={styles.legendRow}>
-                <div
-                  className={`${styles.legendDot} ${styles.dotAdvert}`}
-                ></div>{" "}
-                Advert
-              </div>
-              <div className={`${styles.legendRow} ${styles.legendSubtitle}`}>
-                Paths layer
-              </div>
-              <div className={styles.legendRow}>
-                <div
-                  className={`${styles.legendDot} ${styles.pathSingle}`}
-                ></div>{" "}
-                Single route
-              </div>
-              <div className={styles.legendRow}>
-                <div
-                  className={`${styles.legendDot} ${styles.pathShared}`}
-                ></div>{" "}
-                Shared segment
-              </div>
-              <div className={`${styles.legendRow} ${styles.legendSubtitle}`}>
-                Msg paths layer
-              </div>
-              <div className={styles.legendRow}>
-                <div className={`${styles.legendDot} ${styles.pathMsg}`}></div>{" "}
-                Message path
-              </div>
-              <div className={`${styles.legendRow} ${styles.legendSubtitle}`}>
-                Neighbours layer
-              </div>
-              <div className={styles.legendRow}>
-                <div
-                  className={`${styles.legendDot} ${styles.pathNeighbour}`}
-                ></div>{" "}
-                Neighbour link (SNR)
-              </div>
-            </div>
-          )}
-        </div>
+        <MapLegend
+          open={legendOpen}
+          onToggle={() => setLegendOpen((p) => !p)}
+        />
 
-        <div
-          className={`${styles.mapBtnBar} ${!legendOpen ? styles.mapBtnBarSmallLegend : ""}`}
-        >
-          <button
-            className={`${styles.mapBtn} ${styles.mapSetHomeBtn} ${pickingHome ? styles.picking : ""}`}
-            onClick={() => setPickingHome((p) => !p)}
-          >
-            {pickingHome ? "\u2715 Cancel" : "\u8962 Set Home"}
-          </button>
-          <button
-            className={`${styles.mapBtn} ${styles.mapContactsBtn} ${showingAllContacts ? styles.active : ""}`}
-            onClick={() => setShowingAllContacts((p) => !p)}
-          >
-            &#9788; All Contacts
-          </button>
-          <button
-            className={`${styles.mapBtn} ${styles.mapPathsBtn} ${showingPaths ? styles.active : ""}`}
-            onClick={togglePaths}
-          >
-            &#8627; Paths
-          </button>
-          <button
-            className={`${styles.mapBtn} ${styles.mapPathsBtn} ${showingMsgPaths ? styles.active : ""}`}
-            onClick={() => setShowingMsgPaths((p) => !p)}
-          >
-            &#9993; Msg Paths
-          </button>
-          <button
-            className={`${styles.mapBtn} ${styles.mapNeighboursBtn} ${showingNeighbourLinks ? styles.active : ""}`}
-            onClick={() => {
-              if (!showingNeighbourLinks && !showingAllContacts) {
-                // Show contacts with neighbours so the lines have a destination.
-                setShowingAllContacts(true);
-              }
-              setShowingNeighbourLinks((p) => !p);
-            }}
-          >
-            &#8767; Neighbours
-          </button>
-          <button
-            className={`${styles.mapBtn} ${styles.mapRefreshBtn}`}
-            onClick={loadMap}
-          >
-            Refresh
-          </button>
-        </div>
+        <MapControls
+          legendOpen={legendOpen}
+          pickingHome={pickingHome}
+          showingAllContacts={showingAllContacts}
+          showingPaths={showingPaths}
+          showingMsgPaths={showingMsgPaths}
+          showingNeighbourLinks={showingNeighbourLinks}
+          onToggleHome={() => setPickingHome((p) => !p)}
+          onToggleContacts={() => setShowingAllContacts((p) => !p)}
+          onTogglePaths={togglePaths}
+          onToggleMsgPaths={() => setShowingMsgPaths((p) => !p)}
+          onToggleNeighbours={() => {
+            if (!showingNeighbourLinks && !showingAllContacts) {
+              setShowingAllContacts(true);
+            }
+            setShowingNeighbourLinks((p) => !p);
+          }}
+          onRefresh={loadMap}
+        />
       </div>
     </div>
   );

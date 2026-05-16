@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import styles from "./Messages.module.css";
+import { findByKey, buildPrefixMap } from "../utils/keyUtils";
 
 function fmtTime(ts) {
   const d = new Date(ts * 1000);
@@ -58,15 +59,13 @@ export default function Messages() {
     fetch("/api/map")
       .then((r) => r.json())
       .then((data) => {
-        const cr = {};
-        (data.contacts || []).concat(data.repeaters || []).forEach((c) => {
-          if (!c.pubkey) return;
-          const pk = c.pubkey.toLowerCase();
-          cr[pk] = c;
-          if (pk.length >= 4) cr[pk.substring(0, 4)] = c;
-          if (pk.length >= 2) cr[pk.substring(0, 2)] = c;
-        });
-        setContactRoutes(cr);
+        // contacts use pubkey_prefix (12-char); repeaters use pubkey (full 32-char)
+        const contacts = (data.contacts || []).map((c) => ({
+          ...c,
+          pubkey: c.pubkey_prefix, // normalise to "pubkey" for buildPrefixMap
+        }));
+        const allNodes = contacts.concat(data.repeaters || []);
+        setContactRoutes(buildPrefixMap(allNodes, "pubkey"));
       })
       .catch(() => {});
 
@@ -121,13 +120,7 @@ export default function Messages() {
 
   const lookupContact = (pubkeyPrefix) => {
     if (!pubkeyPrefix) return null;
-    const p = pubkeyPrefix.toLowerCase();
-    return (
-      contactRoutes[p] ||
-      contactRoutes[p.substring(0, 4)] ||
-      contactRoutes[p.substring(0, 2)] ||
-      null
-    );
+    return findByKey(contactRoutes, pubkeyPrefix);
   };
 
   const handleReplyClick = (pubkey, name, chIdx) => {
@@ -280,8 +273,8 @@ export default function Messages() {
               }
             }
             if (!isOut && !routePath && m.sender_pubkey) {
-              const pk = m.sender_pubkey.toUpperCase();
-              const cr = cachedRoutes[pk] || cachedRoutes[pk.substring(0, 2)];
+              // cachedRoutes keys are lowercase 12-char prefixes from /api/contact-routes
+              const cr = findByKey(cachedRoutes, m.sender_pubkey);
               if (cr) {
                 if (hops === null) hops = cr.hops;
                 routePath = cr.path || "";
