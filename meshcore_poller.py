@@ -4,7 +4,6 @@ import logging
 import time
 import urllib.request
 from collections import deque
-from datetime import datetime
 from meshcore import MeshCore, EventType
 
 from config import Config
@@ -87,6 +86,7 @@ class MeshcorePoller:
 
         # Register any initially configured repeaters
         self.store.init_repeaters()
+        self.load_stored_contact_routes()
 
         while self._running:
             if self._stay_disconnected:
@@ -682,12 +682,11 @@ class MeshcorePoller:
         elif increment:
             self._contact_routes[node_key][(hops, processed_route)] += 1
 
-        # Now only keep top 5 routes by frequency, and keep
+        # Now only keep top 5 routes by frequency, and on tie choose fewest hops
         self._contact_routes[node_key] = dict(
             sorted(
                 self._contact_routes[node_key].items(),
-                key=lambda a: (a[1], a[0][0]),
-                reverse=True,
+                key=lambda a: (-a[1], a[0][0]),
             )[:5]
         )
         n_routes = len(self._contact_routes[node_key].keys())
@@ -705,19 +704,30 @@ class MeshcorePoller:
             for k in self._contact_routes[node_key].keys():
                 self._contact_routes[node_key][k] *= 0.9 / min_freq_count
 
+        # If this is an increment call then update store 
+        if increment:
+            best_hops, best_route = next(iter(self._contact_routes[node_key].keys()))
+            if best_hops >= 0 and best_route is not None:
+                self.store.update_contact_route(node_key, best_hops, best_route)
+    
+
     def get_cached_contact_route(self, pubkey_prefix):
         node_key = pubkey_prefix[:12].lower()
         if node_key not in self._contact_routes:
             return None, None
 
         return next(iter(self._contact_routes[node_key].keys()))
+    
+    def load_stored_contact_routes(self):
+        for pubkey, (hops, route) in self.store.read_contact_routes().items():
+            self.add_to_contact_routes(pubkey, hops, route, increment=False)
 
-    def get_all_cached_contact_routes_dict(self):
+    def get_all_cached_contact_routes_for_display(self):
         all_routes = {}
         for pubkey, routes_dict in self._contact_routes.items():
             hops, route = next(iter(routes_dict.keys()))
-            display_routes = " > ".join([p.strip()[: self._cfg.node_id_chars] for p in route.split(">")])
-            all_routes[pubkey] = {"hops": hops, "path": display_routes}
+            display_route = " > ".join([p.strip()[: self._cfg.node_id_chars] for p in route.split(">")])
+            all_routes[pubkey] = {"hops": hops, "path": display_route}
         return all_routes
 
     # Payload type codes extracted from header byte bits 2-5: (header >> 2) & 0x0F

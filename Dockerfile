@@ -25,4 +25,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD /bin/bash -c '(trap "kill 0" INT TERM; python3 -m debugpy --listen 0.0.0.0:5678 -m uvicorn app:app --host 127.0.0.1 --port 8088 --reload & cd frontend && pnpm run dev --host 0.0.0.0 --port 8080 & wait)'
+CMD /bin/bash -c '(trap "kill 0" INT TERM; python3 -m debugpy --listen 0.0.0.0:5678 -m uvicorn app:app --host 127.0.0.1 --port 8088 --reload & cd frontend && pnpm run dev --host 0.0.0.0 --port 8080 & wait) 2>&1'

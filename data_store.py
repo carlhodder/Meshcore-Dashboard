@@ -132,6 +132,15 @@ class AdvertNode(BaseDbModel):
         table_name = "advert_nodes"
 
 
+class ContactRoute(BaseDbModel):
+    pubkey = TextField(primary_key=True)
+    ts = FloatField(null=False, default=0)
+    hops = IntegerField(null=False)
+    route = TextField(null=False)
+
+    class Meta:
+        table_name = "contact_routes"
+
 
 METRIC_EXPIRE_HOURS = 12
 METRIC_EXPIRE_INTERVALS = 4
@@ -353,6 +362,7 @@ class DataStore:
                     AdvertNode,
                     Neighbour,
                     RepeaterCommandMessage,
+                    ContactRoute,
                 ],
                 safe=True,
             )
@@ -996,3 +1006,19 @@ class DataStore:
                     return result
             except Exception as e:
                 print(f"[DataStore] Error saving repeater cli cmd: {e}")
+
+    def update_contact_route(self, pubkey, hops, route):
+        with self._lock:
+            try:
+                with db.connection_context():
+                    ContactRoute.insert(pubkey=pubkey, hops=hops, route=route, ts=time.time()).on_conflict_replace().execute()
+            except Exception as e:
+                logging.error(f"[DataStore] Error saving contact routes: {e}")
+
+    def read_contact_routes(self, hours_back=48):
+        with self._lock:
+            try:
+                with db.connection_context():
+                    return {r.pubkey: (r.hops, r.route) for r in ContactRoute.select().where(ContactRoute.ts >= time.time() - hours_back * 60 * 60)}
+            except Exception as e:
+                logging.error(f"[DataStore] Error loading contact routes: {e}")
