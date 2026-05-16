@@ -1,3 +1,34 @@
+# FORK NOTES:
+The original source repo is here: `https://github.com/mattwynharris/Meshcore-Dashboard`
+
+I took the vibe coded project above and wanted to experiment, plus it's freeing knowing you can just blast fast mediocre code without issue :D
+
+I ended up testing how well some of the models refactor code, e.g. the whole FE and a few BE bits. Ended up doing a lot of manual rewriting on the BE and a few bits on the FE. I'm not sure on how much further I want to take this but if there are requests I might add them.
+
+It's a lot more polished and a few more features (more metrics history, admin console, clock set, lots of fixes, FW ver, temp + humidity, plot neighbours SNR values, etc.)
+
+
+Better instructions to come, but basically just:
+- Clone the repo
+- docker compose up --build 
+
+And it runs http://localhost:8080
+
+
+If you want serial in linux add this to the docker-compose.yml file with the keys at the same level as "build":
+```
+    devices:
+      - /dev/ttyACM0
+    group_add:
+      - dialout
+```
+
+If you're on windows there are extra steps, it's not great so I think there's a serial -> TCP thing that may be easier.
+
+
+Everything below here is the original:
+
+
 # MeshCore Repeater Dashboard
 
 A self-hosted web dashboard for monitoring MeshCore LoRa repeaters and contacts via a companion WiFi node.
