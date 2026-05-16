@@ -9,7 +9,6 @@ import styles from "./MapPage.module.css";
 import { findByKey, buildPrefixMap, keysMatch } from "../utils/keyUtils";
 import {
   markerColor,
-  haversineKm,
   addPathToSegments,
   pathInvolvesRepeater,
   applyLinkAnim,
@@ -374,42 +373,22 @@ export default function MapPage() {
         if (!neighbours || !neighbours.length) return;
         var fullPkLookup = {};
         const mapData = lastMapDataRef.current;
-        if (mapData && mapData.home && mapData.home.lat && mapData.home.lon) {
-          var h = mapData.home;
-          if (h.pubkey)
-            fullPkLookup[h.pubkey.toLowerCase()] = {
-              lat: h.lat,
-              lon: h.lon,
-              name: h.name || "Gateway",
-            };
-        }
         if (mapData) {
-          (mapData.repeaters || []).forEach((r) => {
-            if (r.pubkey && r.lat && r.lon)
-              fullPkLookup[r.pubkey.toLowerCase()] = {
-                lat: r.lat,
-                lon: r.lon,
-                name: r.name,
-              };
-          });
-          (mapData.contacts || []).forEach((c) => {
-            // contacts use pubkey_prefix (12-char)
-            var cpk = (c.pubkey_prefix || c.pubkey || "").toLowerCase();
-            if (cpk && c.lat && c.lon)
-              fullPkLookup[cpk] = {
-                lat: c.lat,
-                lon: c.lon,
-                name: c.name || cpk.substring(0, 8),
-              };
-          });
-          (mapData.advert_nodes || []).forEach((n) => {
-            if (n.pubkey && n.lat && n.lon)
-              fullPkLookup[n.pubkey.toLowerCase()] = {
-                lat: n.lat,
-                lon: n.lon,
-                name: n.name,
-              };
-          });
+          for (const device_list of [[mapData.home], mapData.repeaters, mapData.contacts, mapData.advert_nodes]) {
+            if (device_list) {
+              device_list.forEach((c) => {
+                if (c) {
+                  var cpk = (c.pubkey ||c.pubkey_prefix ||  "").toLowerCase();
+                  if (cpk && c.lat && c.lon)
+                    fullPkLookup[cpk] = {
+                      lat: c.lat,
+                      lon: c.lon,
+                      name: c.name || cpk.substring(0, 8),
+                    };
+                }
+              });
+            }
+          }
         }
 
         function resolveNode(pk) {
