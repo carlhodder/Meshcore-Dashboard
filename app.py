@@ -322,7 +322,7 @@ async def get_packets(limit: int = 100):
 
 
 @app.get("/api/messages")
-async def get_messages(channel_idx: int = None, hours: int = 48, limit: int = 200):
+async def get_messages(channel_idx: int = None, hours: int | None = None, limit: int = 200):
     """Return recent messages, optionally filtered by channel index."""
     messages = store.get_messages(channel_idx=channel_idx, hours=hours, limit=limit)
     # Enrich messages that have hops but no stored path with the current known route

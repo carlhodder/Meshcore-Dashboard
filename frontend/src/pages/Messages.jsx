@@ -22,7 +22,6 @@ export default function Messages() {
   const [searchTerm, setSearchTerm] = useState("");
   const [messages, setMessages] = useState([]);
 
-  const [nodeNames, setNodeNames] = useState({});
   const [contactRoutes, setContactRoutes] = useState({});
   const [cachedRoutes, setCachedRoutes] = useState({});
   const [nodeIdChars, setNodeIdChars] = useState(2);
@@ -68,11 +67,6 @@ export default function Messages() {
         setContactRoutes(buildPrefixMap(allNodes, "pubkey"));
       })
       .catch(() => {});
-
-    fetch("/api/node-names")
-      .then((r) => r.json())
-      .then(setNodeNames)
-      .catch(() => {});
     fetch("/api/contact-routes")
       .then((r) => r.json())
       .then(setCachedRoutes)
@@ -80,7 +74,7 @@ export default function Messages() {
   };
 
   const loadMessages = () => {
-    let url = `/api/messages?hours=${hours}&limit=500`;
+    let url = `/api/messages?${hours && hours >= 0 ? `hours=${hours}&` : ""}limit=500`;
     if (activeChannel !== null) {
       url += `&channel_idx=${activeChannel.idx}`;
     }
@@ -227,6 +221,7 @@ export default function Messages() {
           <option value="48">48 hours</option>
           <option value="168">7 days</option>
           <option value="720">30 days</option>
+          <option value="">All time</option>
         </select>
         <input
           className={styles.msgSearch}

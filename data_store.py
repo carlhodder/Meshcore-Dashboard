@@ -775,14 +775,16 @@ class DataStore:
             print(f"[DataStore] ACK update error: {e}")
             return 0
 
-    def get_messages(self, channel_idx=None, hours: int = 48, limit: int = 200) -> list:
+    def get_messages(self, channel_idx=None, hours: int | None = None, limit: int = 200) -> list:
         """Return recent messages, optionally filtered by channel."""
         if not self._db_path:
             return []
-        since = time.time() - (hours * 3600)
+        since = time.time() - ((hours or 0) * 3600)
         try:
             with db.connection_context():
-                query = Message.select().where(Message.timestamp > since)
+                query = Message.select()
+                if hours is not None:
+                    query = query.where(Message.timestamp > since)
                 if channel_idx is not None:
                     query = query.where(Message.channel_idx == channel_idx)
                 query = query.order_by(Message.timestamp.desc()).limit(limit)
