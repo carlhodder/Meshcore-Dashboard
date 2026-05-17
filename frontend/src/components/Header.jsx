@@ -1,6 +1,21 @@
 import { useState, useEffect } from "preact/hooks";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import styles from "./Header.module.css";
+
+
+const HidingLink = ({ href, className, children, ...props }) => {
+    const [location] = useLocation();
+    const isActive = location === href;
+    const combinedClassName = isActive 
+      ? `${className || ""} sm-hidden` 
+      : className;
+    return (
+      <Link href={href} className={combinedClassName} {...props}>
+        {children}
+      </Link>
+    );
+  };
+
 
 export default function Header() {
   const [conn, setConn] = useState({
@@ -129,21 +144,21 @@ export default function Header() {
         </div>
       </div>
       <nav className={`${styles["nav-group"]}`}>
-        <Link href="/" className={`nav-btn`}>
+        <HidingLink href="/" className={`nav-btn`}>
           Dashboard
-        </Link>
-        <Link href="/map" className={`nav-btn`}>
+        </HidingLink>
+        <HidingLink href="/map" className={`nav-btn`}>
           Map
-        </Link>
-        <Link href="/messages" className={`nav-btn`} onClick={markMessagesSeen}>
+        </HidingLink>
+        <HidingLink href="/messages" className={`nav-btn`} onClick={markMessagesSeen}>
           Messages{unreadBadge && <span className={`${styles["msgs-unread-dot"]}`}></span>}
-        </Link>
-        <Link href="/packets" className={`nav-btn`}>
+        </HidingLink>
+        <HidingLink href="/packets" className={`nav-btn`}>
           Packets
-        </Link>
-        <Link href="/logs" className={`nav-btn`}>
+        </HidingLink>
+        <HidingLink href="/logs" className={`nav-btn`}>
           Logs
-        </Link>
+        </HidingLink>
         {ntfy.show && (
           <button
             className={`nav-btn ${styles["nav-ntfy-btn"]} ${!ntfy.enabled ? styles["ntfy-disabled"] : ""}`}

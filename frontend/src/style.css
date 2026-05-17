@@ -159,6 +159,10 @@ body {
     padding: 0;
   }
 
+  .sm-hidden {
+    display: none;
+  }
+
   .nav-btn {
     flex: 1;
     justify-content: center;
