@@ -34,14 +34,23 @@ export default function MapPage() {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
 
+  // --- UI state ---
   const [pickingHome, setPickingHome] = useState(false);
   const [showingAllContacts, setShowingAllContacts] = useState(false);
   const [showingPaths, setShowingPaths] = useState(false);
   const [showingMsgPaths, setShowingMsgPaths] = useState(false);
   const [showingNeighbourLinks, setShowingNeighbourLinks] = useState(false);
-  const [neighbourRenderTrigger, setNeighbourRenderTrigger] = useState(0);
   const [legendOpen, setLegendOpen] = useState(true);
 
+  /**
+   * highlightedPubkey: null = show all, string = scope layers to this node.
+   * Clicking the same node again clears it. Clicking the map background clears it.
+   * showingPaths / showingNeighbourLinks are independent — clicking a node never
+   * forces them on or off.
+   */
+  const [highlightedPubkey, setHighlightedPubkey] = useState(null);
+
+  // --- Map data refs (not state — don't need to trigger re-renders) ---
   const markersRef = useRef({});
   const linkLinesRef = useRef({});
   const homeMarkerRef = useRef(null);
@@ -50,19 +59,18 @@ export default function MapPage() {
   const didInitialFitRef = useRef(false);
   const nodeColorsRef = useRef({});
   const mapNodeNamesRef = useRef({});
-
   const contactMapRef = useRef({});
   const allContactsDataRef = useRef([]);
   const allNodeLatLngRef = useRef({});
-
   const mapPathMaxKmRef = useRef(300);
-  const highlightedRepeaterRef = useRef(null);
-  const pathsStateBeforeHighlightRef = useRef(false);
 
+  // --- Layer refs ---
   const contactsLayerRef = useRef(null);
   const pathsLayerRef = useRef(null);
   const msgPathsLayerRef = useRef(null);
   const neighbourLinksLayerRef = useRef(null);
+
+  // ─── Node names ────────────────────────────────────────────────────────────
 
   const loadNodeNames = useCallback(() => {
     fetch("/api/node-names")
@@ -73,14 +81,19 @@ export default function MapPage() {
       .catch(() => {});
   }, []);
 
-  const renderPathsLayer = useCallback(() => {
+  // ─── Layer renderers ────────────────────────────────────────────────────────
+
+  /**
+   * Render the paths layer.
+   * @param {string|null} filterPk - scope to this pubkey, or null for all.
+   */
+  const renderPathsLayer = useCallback((filterPk) => {
     if (!pathsLayerRef.current) return;
     pathsLayerRef.current.clearLayers();
     fetch("/api/contact-routes")
       .then((r) => r.json())
       .then((routes) => {
         const homeNode = allNodeLatLngRef.current["__home__"];
-        const filterPk = highlightedRepeaterRef.current;
         const segCounts = {};
         const segLatLng = {};
         const segLabels = {};
@@ -190,6 +203,9 @@ export default function MapPage() {
       .catch(() => {});
   }, []);
 
+  /**
+   * Render the message-paths layer (no filter — always shows all).
+   */
   const renderMsgPathsLayer = useCallback(() => {
     if (!msgPathsLayerRef.current) return;
     msgPathsLayerRef.current.clearLayers();
@@ -258,127 +274,118 @@ export default function MapPage() {
       .catch(() => {});
   }, []);
 
-  const clearPathHighlight = useCallback(() => {
-    highlightedRepeaterRef.current = null;
-    setShowingPaths(pathsStateBeforeHighlightRef.current);
-    if (pathsStateBeforeHighlightRef.current) {
-      renderPathsLayer();
-    } else {
-      if (pathsLayerRef.current) pathsLayerRef.current.clearLayers();
-    }
-    setNeighbourRenderTrigger((prev) => prev + 1);
-  }, [renderPathsLayer]);
+  /**
+   * Render the contacts layer.
+   * @param {string|null} filterPk - passed through to click handler context only.
+   */
+  const renderContactsLayer = useCallback(
+    (filterPk) => {
+      if (!contactsLayerRef.current) return;
+      contactsLayerRef.current.clearLayers();
+      allContactsDataRef.current.forEach((c) => {
+        if (c.configured) return;
+        if (!c.lat || !c.lon) return;
+        var latlng = [c.lat, c.lon];
+        var cpk = c.pubkey_prefix || c.pubkey || "";
+        var isKnown = !!(cpk && findByKey(mapNodeNamesRef.current, cpk));
 
-  const renderContactsLayer = useCallback(() => {
-    if (!contactsLayerRef.current) return;
-    contactsLayerRef.current.clearLayers();
-    allContactsDataRef.current.forEach((c) => {
-      if (c.configured) return;
-      if (!c.lat || !c.lon) return;
-      var latlng = [c.lat, c.lon];
-      // contacts use pubkey_prefix (12-char)
-      var cpk = c.pubkey_prefix || c.pubkey || "";
-      // mapNodeNamesRef is keyed by 12-char prefix; use findByKey for prefix-agnostic lookup
-      var isKnown = !!(cpk && findByKey(mapNodeNamesRef.current, cpk));
+        var lastHeardStr = "—";
+        if (c.last_seen) {
+          var ageSec = Date.now() / 1000 - c.last_seen;
+          if (ageSec < 60) lastHeardStr = Math.round(ageSec) + "s ago";
+          else if (ageSec < 3600)
+            lastHeardStr = Math.round(ageSec / 60) + "m ago";
+          else if (ageSec < 86400)
+            lastHeardStr = Math.round(ageSec / 3600) + "h ago";
+          else lastHeardStr = new Date(c.last_seen * 1000).toLocaleDateString();
+        }
+        var hopsStr =
+          c.hops < 0
+            ? "—"
+            : c.hops === 0
+              ? "Direct"
+              : c.hops + " hop" + (c.hops !== 1 ? "s" : "");
+        var routeStr = c.route_path || "";
+        var popupContent =
+          '<div class="popup-name">' +
+          (c.name || cpk.substring(0, 8)) +
+          "</div>" +
+          '<div class="popup-row"><span class="popup-label">Last heard</span><span class="popup-val">' +
+          lastHeardStr +
+          "</span></div>" +
+          '<div class="popup-row"><span class="popup-label">Hops</span><span class="popup-val">' +
+          hopsStr +
+          "</span></div>" +
+          (routeStr
+            ? '<div class="popup-row"><span class="popup-label">Path</span><span class="popup-val" style="font-size:0.78rem;font-family:monospace">' +
+              routeStr +
+              "</span></div>"
+            : "") +
+          '<div class="popup-row"><span class="popup-label">ID</span><span class="popup-val" style="font-family:monospace;font-size:0.72rem">' +
+          cpk.substring(0, 12) +
+          "…</span></div>" +
+          (isKnown
+            ? '<div style="color:#22d3ee;font-size:0.7rem;margin-top:0.2rem">★ Known node</div>'
+            : "");
 
-      var ringColor = "#22d3ee";
-      var fillColor = "#0c4a6e";
-      var dashArray = "2, 2";
-
-      var lastHeardStr = "—";
-      if (c.last_seen) {
-        var ageSec = Date.now() / 1000 - c.last_seen;
-        if (ageSec < 60) lastHeardStr = Math.round(ageSec) + "s ago";
-        else if (ageSec < 3600)
-          lastHeardStr = Math.round(ageSec / 60) + "m ago";
-        else if (ageSec < 86400)
-          lastHeardStr = Math.round(ageSec / 3600) + "h ago";
-        else lastHeardStr = new Date(c.last_seen * 1000).toLocaleDateString();
-      }
-      var hopsStr =
-        c.hops < 0
-          ? "—"
-          : c.hops === 0
-            ? "Direct"
-            : c.hops + " hop" + (c.hops !== 1 ? "s" : "");
-      var routeStr = c.route_path || "";
-      var popupContent =
-        '<div class="popup-name">' +
-        (c.name || cpk.substring(0, 8)) +
-        "</div>" +
-        '<div class="popup-row"><span class="popup-label">Last heard</span><span class="popup-val">' +
-        lastHeardStr +
-        "</span></div>" +
-        '<div class="popup-row"><span class="popup-label">Hops</span><span class="popup-val">' +
-        hopsStr +
-        "</span></div>" +
-        (routeStr
-          ? '<div class="popup-row"><span class="popup-label">Path</span><span class="popup-val" style="font-size:0.78rem;font-family:monospace">' +
-            routeStr +
-            "</span></div>"
-          : "") +
-        '<div class="popup-row"><span class="popup-label">ID</span><span class="popup-val" style="font-family:monospace;font-size:0.72rem">' +
-        cpk.substring(0, 12) +
-        "…</span></div>" +
-        (isKnown
-          ? '<div style="color:#22d3ee;font-size:0.7rem;margin-top:0.2rem">★ Known node</div>'
-          : "");
-
-      var cm = window.L.circleMarker(latlng, {
-        radius: 7,
-        color: ringColor,
-        weight: 2,
-        fillColor: fillColor,
-        fillOpacity: 0.75,
-        opacity: 0.9,
-        dashArray: dashArray,
-      })
-        .bindPopup(popupContent)
-        .addTo(contactsLayerRef.current)
-        .on(
-          "click",
-          ((pk) => {
-            return function (e) {
-              window.L.DomEvent.stopPropagation(e);
-              if (highlightedRepeaterRef.current === pk) {
-                clearPathHighlight();
-              } else {
-                setShowingPaths((prev) => {
-                  pathsStateBeforeHighlightRef.current = prev;
-                  return true;
-                });
-                highlightedRepeaterRef.current = pk;
-                renderPathsLayer();
-                setNeighbourRenderTrigger((prev) => prev + 1);
-              }
-            };
-          })(cpk),
-        );
-
-      cm.bindTooltip(c.name || cpk.substring(0, 8), {
-        permanent: true,
-        direction: "top",
-        className: "map-label",
-        offset: [0, -10],
+        window.L.circleMarker(latlng, {
+          radius: 7,
+          color: "#22d3ee",
+          weight: 2,
+          fillColor: "#0c4a6e",
+          fillOpacity: 0.75,
+          opacity: 0.9,
+          dashArray: "2, 2",
+        })
+          .bindPopup(popupContent)
+          .addTo(contactsLayerRef.current)
+          .on(
+            "click",
+            ((pk) => {
+              return function (e) {
+                window.L.DomEvent.stopPropagation(e);
+                setHighlightedPubkey((prev) => (prev === pk ? null : pk));
+              };
+            })(cpk),
+          )
+          .bindTooltip(c.name || cpk.substring(0, 8), {
+            permanent: true,
+            direction: "top",
+            className: "map-label",
+            offset: [0, -10],
+          });
       });
-    });
-  }, [clearPathHighlight, renderPathsLayer]);
+    },
+    // filterPk is not used inside but contacts re-render when showingAllContacts changes
+    [],
+  );
 
-  const renderNeighbourLinksLayer = useCallback(() => {
+  /**
+   * Render the neighbour links layer.
+   * @param {string|null} filterPk - scope to this pubkey, or null for all.
+   */
+  const renderNeighbourLinksLayer = useCallback((filterPk) => {
     if (!neighbourLinksLayerRef.current) return;
     neighbourLinksLayerRef.current.clearLayers();
     fetch("/api/neighbours")
       .then((r) => r.json())
       .then((neighbours) => {
         if (!neighbours || !neighbours.length) return;
+
+        // Build a lookup of all known node positions
         var fullPkLookup = {};
         const mapData = lastMapDataRef.current;
         if (mapData) {
-          for (const device_list of [[mapData.home], mapData.repeaters, mapData.contacts, mapData.advert_nodes]) {
+          for (const device_list of [
+            [mapData.home],
+            mapData.repeaters,
+            mapData.contacts,
+            mapData.advert_nodes,
+          ]) {
             if (device_list) {
               device_list.forEach((c) => {
                 if (c) {
-                  var cpk = (c.pubkey ||c.pubkey_prefix ||  "").toLowerCase();
+                  var cpk = (c.pubkey || c.pubkey_prefix || "").toLowerCase();
                   if (cpk && c.lat && c.lon)
                     fullPkLookup[cpk] = {
                       pubkey: cpk,
@@ -392,34 +399,42 @@ export default function MapPage() {
           }
         }
 
+        function resolveNode(pk) {
+          if (!pk) return null;
+          var pkLower = pk.toLowerCase();
+          return fullPkLookup[pkLower] || findByKey(fullPkLookup, pkLower);
+        }
+
         var pairs = {};
-        var filterPk = highlightedRepeaterRef.current;
 
         neighbours.forEach((nb) => {
-          // Filter: skip if neither endpoint matches the highlighted repeater
-          if (filterPk) {
-            if (
-              !keysMatch(nb.pubkey, filterPk) &&
-              !keysMatch(nb.pubkey_remote, filterPk)
-            )
-              return;
-          }
+          if (
+            filterPk &&
+            !keysMatch(nb.pubkey, filterPk) &&
+            !keysMatch(nb.pubkey_remote, filterPk)
+          )
+            return;
 
-          var listenerNode = findByKey(fullPkLookup, nb.pubkey);
-          var transmitterNode = findByKey(fullPkLookup, nb.pubkey_remote);
+          var listenerNode = resolveNode(nb.pubkey);
+          var transmitterNode = resolveNode(nb.pubkey_remote);
           if (!listenerNode || !transmitterNode) return;
 
-          var pairKey = [nb.pubkey.slice(0, nb.pubkey_remote.length).toLowerCase(), nb.pubkey_remote.toLowerCase()].sort().join("||");
+          var pairKey = [
+            nb.pubkey.slice(0, nb.pubkey_remote.length).toLowerCase(),
+            nb.pubkey_remote.toLowerCase(),
+          ]
+            .sort()
+            .join("||");
 
           if (!(pairKey in pairs)) {
             pairs[pairKey] = {
               nodeA: transmitterNode,
               nodeB: listenerNode,
-              snrA: nb.snr, // SNR as heard by nodeA (i.e. nodeB transmitted)
-              snrB: null, // SNR as heard by nodeB (i.e. nodeA transmitted)
+              snrA: nb.snr,
+              snrB: null,
             };
           } else {
-            if (pairs[pairKey].nodeA.pubkey == transmitterNode.pubkey) {
+            if (pairs[pairKey].nodeA.pubkey === transmitterNode.pubkey) {
               pairs[pairKey].snrA = nb.snr;
             } else {
               pairs[pairKey].snrB = nb.snr;
@@ -431,21 +446,18 @@ export default function MapPage() {
           var p = pairs[key];
           var ptA = [p.nodeA.lat, p.nodeA.lon];
           var ptB = [p.nodeB.lat, p.nodeB.lon];
-          var nameA = p.nodeA.name || p.nodeA.pubkey?.splice(0, 12);
-          var nameB = p.nodeB.name || p.nodeB.pubkey?.splice(0, 12);
+          var nameA = p.nodeA.name || p.nodeA.pubkey.substring(0, 12);
+          var nameB = p.nodeB.name || p.nodeB.pubkey.substring(0, 12);
 
           var lines = [];
-          // snrA = SNR as heard by nodeA (nodeB transmitted → nameB → nameA)
           if (p.snrA !== null)
             lines.push(
               nameB + " \u2192 " + nameA + ": " + p.snrA.toFixed(1) + " dB",
             );
-          // snrB = SNR as heard by nodeB (nodeA transmitted → nameA → nameB)
           if (p.snrB !== null)
             lines.push(
               nameA + " \u2192 " + nameB + ": " + p.snrB.toFixed(1) + " dB",
             );
-          var labelHtml = lines.join("<br>");
 
           window.L.polyline([ptA, ptB], {
             color: "#22d3ee",
@@ -454,8 +466,6 @@ export default function MapPage() {
             interactive: false,
           }).addTo(neighbourLinksLayerRef.current);
 
-          var midLat = (ptA[0] + ptB[0]) / 2;
-          var midLon = (ptA[1] + ptB[1]) / 2;
           window.L.tooltip({
             permanent: true,
             direction: "top",
@@ -463,13 +473,15 @@ export default function MapPage() {
             offset: [0, -6],
             interactive: false,
           })
-            .setContent(labelHtml)
-            .setLatLng([midLat, midLon])
+            .setContent(lines.join("<br>"))
+            .setLatLng([(ptA[0] + ptB[0]) / 2, (ptA[1] + ptB[1]) / 2])
             .addTo(neighbourLinksLayerRef.current);
         });
       })
       .catch(() => {});
   }, []);
+
+  // ─── Node lat/lng index ─────────────────────────────────────────────────────
 
   const rebuildAllNodeLatLng = useCallback((data) => {
     const newLatLng = {};
@@ -484,24 +496,20 @@ export default function MapPage() {
     function indexNode(pubkey, lat, lon, name) {
       var pl = pubkey.toLowerCase();
       var entry = { lat: lat, lon: lon, name: name || pl.substring(0, 2) };
-      // Index at all supported prefix lengths so findByKey works regardless of node_id_chars
       for (var len of [2, 4, 6, 12]) {
         if (len <= pl.length) newLatLng[pl.substring(0, len)] = entry;
       }
       if (pl.length > 12) newLatLng[pl] = entry;
     }
-    // Repeaters take priority — index first so contacts/adverts don't overwrite them
     (data.repeaters || []).forEach((r) => {
       if (!r.lat || !r.lon || !r.pubkey) return;
       indexNode(r.pubkey, r.lat, r.lon, r.name);
     });
-    // Contacts: only index if no repeater already occupies that 2-char prefix
     (data.contacts || []).forEach((c) => {
       var pk = c.pubkey_prefix || c.pubkey;
       if (!c.lat || !c.lon || !pk) return;
       if (!findByKey(newLatLng, pk)) indexNode(pk, c.lat, c.lon, c.name);
     });
-    // Advert nodes: same priority — don't overwrite repeaters or contacts
     (data.advert_nodes || []).forEach((n) => {
       if (!n.lat || !n.lon || !n.pubkey) return;
       if (!findByKey(newLatLng, n.pubkey))
@@ -510,6 +518,8 @@ export default function MapPage() {
     allNodeLatLngRef.current = newLatLng;
   }, []);
 
+  // ─── Main map render ────────────────────────────────────────────────────────
+
   const renderMap = useCallback(
     (data) => {
       lastMapDataRef.current = data;
@@ -517,8 +527,6 @@ export default function MapPage() {
       const repeaters = data.repeaters || [];
       const bounds = [];
 
-      // Build prefix maps for repeaters and non-configured contacts using buildPrefixMap
-      // so findByKey works at any node_id_chars length.
       repeaters.forEach((r, idx) => {
         if (!nodeColorsRef.current[r.pubkey])
           nodeColorsRef.current[r.pubkey] =
@@ -589,17 +597,10 @@ export default function MapPage() {
             })
             .on("click", (e) => {
               window.L.DomEvent.stopPropagation(e);
-              if (highlightedRepeaterRef.current === r.pubkey) {
-                clearPathHighlight();
-              } else {
-                setShowingPaths((prev) => {
-                  pathsStateBeforeHighlightRef.current = prev;
-                  return true;
-                });
-                highlightedRepeaterRef.current = r.pubkey;
-                renderPathsLayer();
-                setNeighbourRenderTrigger((prev) => prev + 1);
-              }
+              // Toggle: clicking the same node clears the highlight
+              setHighlightedPubkey((prev) =>
+                prev === r.pubkey ? null : r.pubkey,
+              );
             });
         }
       });
@@ -613,25 +614,7 @@ export default function MapPage() {
 
       rebuildAllNodeLatLng(data);
 
-      // We rely on effects or manual calls to update layers.
-      // It's safer to re-render these via state effects, but since data updated we can just force render if active.
-      setShowingPaths((prev) => {
-        if (prev) setTimeout(renderPathsLayer, 0);
-        return prev;
-      });
-      setShowingMsgPaths((prev) => {
-        if (prev) setTimeout(renderMsgPathsLayer, 0);
-        return prev;
-      });
-      setShowingNeighbourLinks((prev) => {
-        if (prev) setTimeout(renderNeighbourLinksLayer, 0);
-        return prev;
-      });
-      setShowingAllContacts((prev) => {
-        if (prev) setTimeout(renderContactsLayer, 0);
-        return prev;
-      });
-
+      // Build animated link lines between home → intermediate → repeater
       var nodeLatLng = {};
       if (home.lat && home.lon) nodeLatLng["__home__"] = [home.lat, home.lon];
       repeaters.forEach((r) => {
@@ -644,13 +627,15 @@ export default function MapPage() {
         var nodeColor = nodeColorsRef.current[r.pubkey] || "#94a3b8";
         var chain = ["__home__"];
         if (r.route_path && r.hops > 0) {
-          var segments = r.route_path.replace(/\s/g, "").split(">");
-          segments.forEach((seg) => {
-            var intermediate = findByKey(pubkeyMapRef.current, seg);
-            if (intermediate && intermediate.pubkey !== r.pubkey) {
-              chain.push(intermediate.pubkey);
-            }
-          });
+          r.route_path
+            .replace(/\s/g, "")
+            .split(">")
+            .forEach((seg) => {
+              var intermediate = findByKey(pubkeyMapRef.current, seg);
+              if (intermediate && intermediate.pubkey !== r.pubkey) {
+                chain.push(intermediate.pubkey);
+              }
+            });
         }
         chain.push(r.pubkey);
         for (var i = 0; i < chain.length - 1; i++) {
@@ -669,9 +654,9 @@ export default function MapPage() {
 
       Object.keys(linkLinesRef.current).forEach((key) => {
         if (!newLinks[key]) {
-          linkLinesRef.current[key].forEach((line) => {
-            mapRef.current.removeLayer(line);
-          });
+          linkLinesRef.current[key].forEach((line) =>
+            mapRef.current.removeLayer(line),
+          );
           delete linkLinesRef.current[key];
         }
       });
@@ -682,9 +667,7 @@ export default function MapPage() {
         var n = lkArr.length;
         if (!linkLinesRef.current[key]) linkLinesRef.current[key] = [];
         var oldArr = linkLinesRef.current[key];
-        while (oldArr.length > n) {
-          mapRef.current.removeLayer(oldArr.pop());
-        }
+        while (oldArr.length > n) mapRef.current.removeLayer(oldArr.pop());
         lkArr.forEach((lk, i) => {
           var offset = (i - (n - 1) / 2) * OFFSET;
           var pts = n > 1 ? perpOffset(lk.pts, offset) : lk.pts;
@@ -711,34 +694,28 @@ export default function MapPage() {
         } catch (e) {}
       }
     },
-    [
-      rebuildAllNodeLatLng,
-      clearPathHighlight,
-      renderPathsLayer,
-      renderMsgPathsLayer,
-      renderNeighbourLinksLayer,
-      renderContactsLayer,
-    ],
+    [rebuildAllNodeLatLng],
   );
 
   const loadMap = useCallback(() => {
     fetch("/api/map")
       .then((r) => r.json())
       .then((data) => {
-        if (JSON.stringify(lastMapDataRef.current) != JSON.stringify(data)) {
+        if (JSON.stringify(lastMapDataRef.current) !== JSON.stringify(data)) {
           renderMap(data);
         }
       })
       .catch(() => {});
   }, [renderMap]);
 
+  // ─── Effects ────────────────────────────────────────────────────────────────
+
   // Start legend minimised on small screens
   useLayoutEffect(() => {
-    if (window.innerWidth < 768) {
-      setLegendOpen(false);
-    }
+    if (window.innerWidth < 768) setLegendOpen(false);
   }, []);
 
+  // Initialise Leaflet map once
   useEffect(() => {
     if (!window.L || !mapContainerRef.current) return;
 
@@ -768,15 +745,14 @@ export default function MapPage() {
 
     const onMapClick = (e) => {
       if (!pickingHome) {
-        if (highlightedRepeaterRef.current) clearPathHighlight();
+        // Clicking the map background clears any highlight
+        setHighlightedPubkey(null);
         return;
       }
-      var lat = e.latlng.lat;
-      var lon = e.latlng.lng;
       fetch("/api/home", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat: lat, lon: lon }),
+        body: JSON.stringify({ lat: e.latlng.lat, lon: e.latlng.lng }),
       })
         .then((r) => r.json())
         .then((result) => {
@@ -789,14 +765,12 @@ export default function MapPage() {
     };
 
     mapRef.current.on("click", onMapClick);
-
     return () => {
-      if (mapRef.current) {
-        mapRef.current.off("click", onMapClick);
-      }
+      if (mapRef.current) mapRef.current.off("click", onMapClick);
     };
-  }, [pickingHome, clearPathHighlight, loadMap]);
+  }, [pickingHome, loadMap]);
 
+  // Initial data load + polling
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
@@ -815,9 +789,6 @@ export default function MapPage() {
     return () => {
       clearInterval(mapInterval);
       clearInterval(nodeInterval);
-      // We do not destroy the map here because it's persistent until unmount,
-      // but if the component completely unmounts, mapRef.current might be handled separately or here.
-      // Usually better to let Leaflet destroy it on full unmount:
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -825,35 +796,32 @@ export default function MapPage() {
     };
   }, [loadNodeNames, loadMap]);
 
+  // Paths layer: re-render whenever the toggle or highlight changes
   useEffect(() => {
-    if (showingPaths) renderPathsLayer();
+    if (showingPaths) renderPathsLayer(highlightedPubkey);
     else if (pathsLayerRef.current) pathsLayerRef.current.clearLayers();
-  }, [showingPaths, renderPathsLayer]);
+  }, [showingPaths, highlightedPubkey, renderPathsLayer]);
 
+  // Msg paths layer: no filter, just on/off
   useEffect(() => {
     if (showingMsgPaths) renderMsgPathsLayer();
     else if (msgPathsLayerRef.current) msgPathsLayerRef.current.clearLayers();
   }, [showingMsgPaths, renderMsgPathsLayer]);
 
+  // Neighbours layer: re-render whenever the toggle or highlight changes
   useEffect(() => {
-    if (showingNeighbourLinks) renderNeighbourLinksLayer();
+    if (showingNeighbourLinks) renderNeighbourLinksLayer(highlightedPubkey);
     else if (neighbourLinksLayerRef.current)
       neighbourLinksLayerRef.current.clearLayers();
-  }, [
-    showingNeighbourLinks,
-    neighbourRenderTrigger,
-    renderNeighbourLinksLayer,
-  ]);
+  }, [showingNeighbourLinks, highlightedPubkey, renderNeighbourLinksLayer]);
 
+  // Contacts layer: on/off only (contacts don't filter by highlight)
   useEffect(() => {
-    if (showingAllContacts) renderContactsLayer();
+    if (showingAllContacts) renderContactsLayer(highlightedPubkey);
     else if (contactsLayerRef.current) contactsLayerRef.current.clearLayers();
   }, [showingAllContacts, renderContactsLayer]);
 
-  const togglePaths = () => {
-    highlightedRepeaterRef.current = null;
-    setShowingPaths((prev) => !prev);
-  };
+  // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className={styles.mapWrap}>
@@ -878,7 +846,10 @@ export default function MapPage() {
           showingNeighbourLinks={showingNeighbourLinks}
           onToggleHome={() => setPickingHome((p) => !p)}
           onToggleContacts={() => setShowingAllContacts((p) => !p)}
-          onTogglePaths={togglePaths}
+          onTogglePaths={() => {
+            setHighlightedPubkey(null);
+            setShowingPaths((p) => !p);
+          }}
           onToggleMsgPaths={() => setShowingMsgPaths((p) => !p)}
           onToggleNeighbours={() => {
             if (!showingNeighbourLinks && !showingAllContacts) {
