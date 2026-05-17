@@ -426,40 +426,41 @@ export default function MapPage() {
             .sort()
             .join("||");
 
+          // Values are from the perspective of the listener
           if (!(pairKey in pairs)) {
             pairs[pairKey] = {
-              nodeA: transmitterNode,
-              nodeB: listenerNode,
-              snrA: nb.snr,
-              snrB: null,
+              nodeTx: transmitterNode,
+              nodeRx: listenerNode,
+              snrToRx: nb.snr,
+              snrFromRx: null,
             };
           } else {
-            if (pairs[pairKey].nodeA.pubkey === transmitterNode.pubkey) {
-              pairs[pairKey].snrA = nb.snr;
+            if (pairs[pairKey].nodeTx.pubkey === listenerNode.pubkey) {
+              pairs[pairKey].snrFromRx = nb.snr;
             } else {
-              pairs[pairKey].snrB = nb.snr;
+              pairs[pairKey].snrToRx = nb.snr;
             }
           }
         });
 
         Object.keys(pairs).forEach((key) => {
           var p = pairs[key];
-          var ptA = [p.nodeA.lat, p.nodeA.lon];
-          var ptB = [p.nodeB.lat, p.nodeB.lon];
-          var nameA = p.nodeA.name || p.nodeA.pubkey.substring(0, 12);
-          var nameB = p.nodeB.name || p.nodeB.pubkey.substring(0, 12);
+          var ptTx = [p.nodeTx.lat, p.nodeTx.lon];
+          var ptRx = [p.nodeRx.lat, p.nodeRx.lon];
+          var nameTx = p.nodeTx.name || p.nodeTx.pubkey.substring(0, 12);
+          var nameRx = p.nodeRx.name || p.nodeRx.pubkey.substring(0, 12);
 
           var lines = [];
-          if (p.snrA !== null)
+          if (p.snrToRx !== null)
             lines.push(
-              nameB + " \u2192 " + nameA + ": " + p.snrA.toFixed(1) + " dB",
+              nameTx + " \u2192 " + nameRx + ": " + p.snrToRx.toFixed(1) + " dB",
             );
-          if (p.snrB !== null)
+          if (p.snrFromRx !== null && highlightedPubkey == null)
             lines.push(
-              nameA + " \u2192 " + nameB + ": " + p.snrB.toFixed(1) + " dB",
+              nameRx + " \u2192 " + nameTx + ": " + p.snrFromRx.toFixed(1) + " dB",
             );
 
-          window.L.polyline([ptA, ptB], {
+          window.L.polyline([ptTx, ptRx], {
             color: "#22d3ee",
             weight: 2,
             opacity: 0.65,
@@ -474,12 +475,12 @@ export default function MapPage() {
             interactive: false,
           })
             .setContent(lines.join("<br>"))
-            .setLatLng([(ptA[0] + ptB[0]) / 2, (ptA[1] + ptB[1]) / 2])
+            .setLatLng([(ptTx[0] + ptRx[0]) / 2, (ptTx[1] + ptRx[1]) / 2])
             .addTo(neighbourLinksLayerRef.current);
         });
       })
       .catch(() => {});
-  }, []);
+  }, [highlightedPubkey]);
 
   // ─── Node lat/lng index ─────────────────────────────────────────────────────
 
