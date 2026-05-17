@@ -35,7 +35,8 @@ Click the repeater hamburger menu to show extra features such as trigger advert,
 
 ##  Neighbours Map
 
-<img width="2555" height="1540" alt="Neighbours" src="https://github.com/user-attachments/assets/0185fca6-eed3-4b1f-950a-c93e8a936927" />
+<img width="2555" height="1540" alt="Neighbours" src="https://github.com/user-attachments/assets/a5256c6b-c316-43d6-a64d-c2c5e3cdef4d" />
+
 
 Plot the signal strengths returned by the repeater of all it's neighbour repeaters. Click on single repeater to focus on just that one. 
 
