@@ -381,6 +381,7 @@ export default function MapPage() {
                   var cpk = (c.pubkey ||c.pubkey_prefix ||  "").toLowerCase();
                   if (cpk && c.lat && c.lon)
                     fullPkLookup[cpk] = {
+                      pubkey: cpk,
                       lat: c.lat,
                       lon: c.lon,
                       name: c.name || cpk.substring(0, 8),
@@ -391,16 +392,7 @@ export default function MapPage() {
           }
         }
 
-        function resolveNode(pk) {
-          if (!pk) return null;
-          var pkLower = pk.toLowerCase();
-          if (fullPkLookup[pkLower]) return fullPkLookup[pkLower];
-          // Prefix-match: either key is a prefix of the other, prefer longest match
-          return findByKey(fullPkLookup, pkLower);
-        }
-
         var pairs = {};
-
         var filterPk = highlightedRepeaterRef.current;
 
         neighbours.forEach((nb) => {
@@ -413,35 +405,25 @@ export default function MapPage() {
               return;
           }
 
-          var listenerNode = resolveNode(nb.pubkey);
-          var transmitterNode = resolveNode(nb.pubkey_remote);
+          var listenerNode = findByKey(fullPkLookup, nb.pubkey);
+          var transmitterNode = findByKey(fullPkLookup, nb.pubkey_remote);
           if (!listenerNode || !transmitterNode) return;
 
-          // Use the full pubkeys as pair keys (they're already 12-char prefixes from the API)
-          var pkA = nb.pubkey < nb.pubkey_remote ? nb.pubkey : nb.pubkey_remote;
-          var pkB = nb.pubkey < nb.pubkey_remote ? nb.pubkey_remote : nb.pubkey;
-          var pairKey = pkA.toLowerCase() + "||" + pkB.toLowerCase();
+          var pairKey = [nb.pubkey.slice(0, nb.pubkey_remote.length).toLowerCase(), nb.pubkey_remote.toLowerCase()].sort().join("||");
 
-          if (!pairs[pairKey]) {
+          if (!(pairKey in pairs)) {
             pairs[pairKey] = {
-              nodeA:
-                nb.pubkey < nb.pubkey_remote ? listenerNode : transmitterNode,
-              nodeB:
-                nb.pubkey < nb.pubkey_remote ? transmitterNode : listenerNode,
-              nameA:
-                nb.pubkey < nb.pubkey_remote ? nb.pubkey : nb.pubkey_remote,
-              nameB:
-                nb.pubkey < nb.pubkey_remote ? nb.pubkey_remote : nb.pubkey,
-              snrA: null, // SNR as heard by nodeA (i.e. nodeB transmitted)
+              nodeA: transmitterNode,
+              nodeB: listenerNode,
+              snrA: nb.snr, // SNR as heard by nodeA (i.e. nodeB transmitted)
               snrB: null, // SNR as heard by nodeB (i.e. nodeA transmitted)
             };
-          }
-
-          // nb.pubkey is the listener, nb.pubkey_remote is the transmitter
-          if (nb.pubkey === pkA) {
-            pairs[pairKey].snrA = nb.snr; // pkA heard pkB
           } else {
-            pairs[pairKey].snrB = nb.snr; // pkB heard pkA
+            if (pairs[pairKey].nodeA.pubkey == transmitterNode.pubkey) {
+              pairs[pairKey].snrA = nb.snr;
+            } else {
+              pairs[pairKey].snrB = nb.snr;
+            }
           }
         });
 
@@ -449,8 +431,8 @@ export default function MapPage() {
           var p = pairs[key];
           var ptA = [p.nodeA.lat, p.nodeA.lon];
           var ptB = [p.nodeB.lat, p.nodeB.lon];
-          var nameA = p.nodeA.name || p.nameA;
-          var nameB = p.nodeB.name || p.nameB;
+          var nameA = p.nodeA.name || p.nodeA.pubkey?.splice(0, 12);
+          var nameB = p.nodeB.name || p.nodeB.pubkey?.splice(0, 12);
 
           var lines = [];
           // snrA = SNR as heard by nodeA (nodeB transmitted → nameB → nameA)
