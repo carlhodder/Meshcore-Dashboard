@@ -451,11 +451,11 @@ export default function MapPage() {
           var nameRx = p.nodeRx.name || p.nodeRx.pubkey.substring(0, 12);
 
           var lines = [];
-          if (p.snrToRx !== null)
+          if (p.snrToRx !== null && (highlightedPubkey == null || highlightedPubkey === p.nodeRx.pubkey))
             lines.push(
               nameTx + " \u2192 " + nameRx + ": " + p.snrToRx.toFixed(1) + " dB",
             );
-          if (p.snrFromRx !== null && highlightedPubkey == null)
+          if (p.snrFromRx !== null && (highlightedPubkey == null || highlightedPubkey === p.nodeTx.pubkey))
             lines.push(
               nameRx + " \u2192 " + nameTx + ": " + p.snrFromRx.toFixed(1) + " dB",
             );
