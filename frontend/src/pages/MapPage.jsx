@@ -852,10 +852,16 @@ export default function MapPage() {
           }}
           onToggleMsgPaths={() => setShowingMsgPaths((p) => !p)}
           onToggleNeighbours={() => {
-            if (!showingNeighbourLinks && !showingAllContacts) {
+            if (!showingNeighbourLinks) {
+              setShowingNeighbourLinks(!showingAllContacts ? 2 : 1);
               setShowingAllContacts(true);
+            } else {
+              if (showingNeighbourLinks == 2) {
+                setShowingAllContacts(false);
+              }
+              setShowingNeighbourLinks(false);
             }
-            setShowingNeighbourLinks((p) => !p);
+            
           }}
           onRefresh={loadMap}
         />
