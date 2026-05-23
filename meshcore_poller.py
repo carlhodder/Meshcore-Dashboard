@@ -229,12 +229,12 @@ class MeshcorePoller:
                     if i < len(repeaters) - 1:
                         logger.debug(f"Waiting {stagger}s before next repeater")
                         await self._interruptible_sleep(stagger)
-
                 if any_polled:
                     await self._fetch_companion_telemetry()
-                await self._interruptible_sleep(30)
             else:
                 logger.debug("Polling paused — skipping this cycle")
+        
+            await self._interruptible_sleep(30)
 
         self._unsubscribe_messages()
 
